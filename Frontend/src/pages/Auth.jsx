@@ -1,8 +1,9 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, User, Landmark, ShieldCheck, Activity, Mail, Lock, ArrowRight } from 'lucide-react';
+import { Shield, User, Landmark, ShieldCheck, Activity, Mail, Lock, ArrowRight, MapPin, Database } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import { api, getApiBaseUrl, setApiBaseUrl, isBackendConnected, DEFAULT_API_BASE } from '../lib/api';
 
 const roles = [
   { 
@@ -44,6 +45,12 @@ export function Auth() {
   const [fullName, setFullName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [pincode, setPincode] = React.useState('');
+  const [apiUrl, setApiUrl] = React.useState(getApiBaseUrl());
+  const [showApiSettings, setShowApiSettings] = React.useState(false);
+  const [devModeClicks, setDevModeClicks] = React.useState(0);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [apiError, setApiError] = React.useState('');
 
   React.useEffect(() => {
     if (!isLogin) {
@@ -51,15 +58,10 @@ export function Auth() {
       setFullName('');
       setEmail('');
       setPassword('');
+      setPincode('');
     }
+    setApiError('');
   }, [location.pathname, isLogin]);
-
-  const handleAuth = (target) => {
-    // Mock authentication delay
-    setTimeout(() => {
-      navigate(target);
-    }, 500);
-  };
 
   const handleRoleSelect = (role) => {
     setRegistrationFormRole(role);
@@ -70,17 +72,57 @@ export function Auth() {
     setFullName('');
     setEmail('');
     setPassword('');
+    setPincode('');
+    setApiError('');
   };
 
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    // Default to donor dashboard for demo purposes
-    handleAuth('/donor-dashboard');
+    setIsLoading(true);
+    setApiError('');
+    try {
+      const response = await api.login(email, password);
+      console.log('Login result:', response);
+      
+      // Determine route by role
+      const profile = JSON.parse(localStorage.getItem('findmeds_profile')) || {};
+      const userRole = profile.role || 'donor';
+      
+      let targetPath = '/donor-dashboard';
+      if (userRole === 'ngo') targetPath = '/ngo-dashboard';
+      if (userRole === 'admin') targetPath = '/admin-portal';
+      
+      navigate(targetPath);
+    } catch (err) {
+      console.error(err);
+      setApiError('Authentication failed. Check your connection or credentials.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleRegisterSubmit = (e) => {
+  const handleRegisterSubmit = async (e) => {
     e.preventDefault();
-    handleAuth(registrationFormRole.target);
+    if (!registrationFormRole) return;
+    setIsLoading(true);
+    setApiError('');
+    try {
+      await api.register(fullName, email, password, registrationFormRole.id, pincode || '400001');
+      navigate(registrationFormRole.target);
+    } catch (err) {
+      console.error(err);
+      setApiError('Registration failed. Check backend service status.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveApiUrl = (e) => {
+    e.preventDefault();
+    setApiBaseUrl(apiUrl);
+    setShowApiSettings(false);
+    // Reload database state
+    window.location.reload();
   };
 
   return (
@@ -94,7 +136,20 @@ export function Auth() {
           >
             <Activity className="h-8 w-8 text-white" />
           </motion.div>
-          <h2 className="text-4xl font-display font-bold text-brand-secondary">
+          <h2 
+            onClick={() => {
+              if (isLogin) {
+                setDevModeClicks(prev => {
+                  const val = prev + 1;
+                  if (val >= 5) {
+                    setShowApiSettings(true);
+                  }
+                  return val;
+                });
+              }
+            }}
+            className="text-4xl font-display font-bold text-brand-secondary select-none cursor-pointer"
+          >
             {isLogin ? 'Welcome Back' : (registrationFormRole ? `Register as ${registrationFormRole.title.split(' ')[1]}` : 'Join the Registry')}
           </h2>
           <p className="mt-2 text-slate-500 font-medium">
@@ -114,7 +169,68 @@ export function Auth() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="clinical-card p-8 shadow-xl"
             >
+              {apiError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl mb-4 text-xs font-semibold">
+                  {apiError}
+                </div>
+              )}
+
               <form onSubmit={handleLoginSubmit} className="space-y-6">
+                <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl mb-6">
+                  <div className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span>Demo Credentials</span>
+                    {devModeClicks >= 5 && (
+                      <button 
+                        type="button"
+                        onClick={() => setShowApiSettings(!showApiSettings)}
+                        className="text-[10px] font-bold text-brand-primary underline tracking-normal"
+                      >
+                        Configure API
+                      </button>
+                    )}
+                  </div>
+                  <div className="text-xs text-blue-600 space-y-1">
+                    <div>Donor: <span className="font-bold">donor@example.com</span></div>
+                    <div>NGO: <span className="font-bold font-mono">ngo@lifecare.org</span></div>
+                    <div>Admin: <span className="font-bold">admin@findmeds.org</span></div>
+                    <div className="text-[10px] text-slate-400 font-mono mt-1 pt-1 border-t border-blue-100">Password is any value.</div>
+                  </div>
+                </div>
+
+                {showApiSettings && (
+                  <div className="bg-slate-900 text-white p-4 rounded-xl space-y-3 mb-4 text-xs">
+                    <div className="font-bold flex items-center gap-1.5 text-teal-400">
+                      <Database className="w-4 h-4" /> Define API Endpoint Node
+                    </div>
+                    <p className="text-[10px] text-slate-400">Points the UI to your running Member 2 Express & Firebase backend:</p>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={apiUrl} 
+                        onChange={(e) => setApiUrl(e.target.value)}
+                        className="bg-slate-800 border border-slate-700 text-white p-2 rounded w-full font-mono text-[11px]"
+                        placeholder="http://localhost:5001/api"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        type="button" 
+                        onClick={handleSaveApiUrl}
+                        className="bg-brand-primary text-white font-bold py-1.5 px-3 rounded text-[10px]"
+                      >
+                        Save & Reload
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => { setApiUrl(DEFAULT_API_BASE); localStorage.removeItem('findmeds_api_url'); window.location.reload(); }}
+                        className="bg-slate-700 hover:bg-slate-600 font-bold py-1.5 px-3 rounded text-[10px]"
+                      >
+                        Reset Localhost
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Email Address</label>
                   <div className="relative">
@@ -148,9 +264,10 @@ export function Auth() {
                 </div>
                 <button
                   type="submit"
+                  disabled={isLoading}
                   className="w-full py-4 bg-brand-primary text-white rounded-xl font-bold shadow-lg shadow-teal-500/20 hover:bg-teal-700 transition-all flex items-center justify-center gap-2"
                 >
-                  Log In to Dashboard
+                  {isLoading ? 'Connecting to Backend...' : 'Log In to Dashboard'}
                   <ArrowRight className="w-5 h-5" />
                 </button>
               </form>
@@ -169,6 +286,12 @@ export function Auth() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="clinical-card p-8 shadow-xl"
             >
+              {apiError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl mb-4 text-xs font-semibold">
+                  {apiError}
+                </div>
+              )}
+
               <form onSubmit={handleRegisterSubmit} className="space-y-6">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Full Name / Organization</label>
@@ -198,31 +321,48 @@ export function Auth() {
                     />
                   </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Create Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                    <input
-                      type="password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-primary outline-none transition-all font-medium"
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Create Password</label>
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                      <input
+                        type="password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-primary outline-none transition-all font-medium"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">ZIP / Pincode</label>
+                    <div className="relative">
+                      <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                      <input
+                        type="text"
+                        required
+                        value={pincode}
+                        onChange={(e) => setPincode(e.target.value)}
+                        placeholder="600001"
+                        className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-primary outline-none transition-all font-medium"
+                      />
+                    </div>
                   </div>
                 </div>
                 <button
                   type="submit"
+                  disabled={isLoading}
                   className="w-full py-4 bg-brand-primary text-white rounded-xl font-bold shadow-lg shadow-teal-500/20 hover:bg-teal-700 transition-all flex items-center justify-center gap-2"
                 >
-                  Complete Registration
+                  {isLoading ? 'Creating secure account...' : 'Complete Registration'}
                   <ArrowRight className="w-5 h-5" />
                 </button>
                 <button
                   type="button"
                   onClick={clearRegistration}
-                  className="w-full text-sm font-bold text-slate-500 hover:text-brand-secondary transition-colors"
+                  className="w-full text-sm font-bold text-slate-500 hover:text-brand-secondary transition-colors text-center"
                 >
                   Back to Role Selection
                 </button>

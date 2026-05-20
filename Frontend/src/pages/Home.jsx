@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { ChevronRight, ShieldCheck, HeartPulse, Recycle, Globe, BarChart3, Pill } from 'lucide-react';
+import { ChevronRight, ShieldCheck, HeartPulse, Recycle, Globe, BarChart3, Pill, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const fadeIn = {
@@ -17,9 +17,9 @@ const stats = [
 
 const features = [
   {
-    title: 'Precision Logistics',
-    description: 'Advanced tracking from donation to dispensing, ensuring every pill reaches its intended destination.',
-    icon: BarChart3,
+    title: 'Precision Monitoring',
+    description: 'Advanced monitoring from donation to verification, ensuring every pill reaches its intended destination.',
+    icon: Activity,
   },
   {
     title: 'Verified Safety',

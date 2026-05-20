@@ -27,11 +27,13 @@ const DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-const sampleMeds = [
-  { id: 1, name: 'Amoxicillin 500mg', category: 'Antibiotics', ngo: 'Helping Hands NGO', distance: '0.8 miles', expiry: '2024-11-20', qty: 45, lat: 41.8781, lng: -87.6298 },
-  { id: 2, name: 'Metformin 850mg', category: 'Diabetes', ngo: 'St. Jude Relief', distance: '2.4 miles', expiry: '2024-09-15', qty: 120, lat: 41.8819, lng: -87.6231 },
-  { id: 3, name: 'Lisinopril 10mg', category: 'Hypertension', ngo: 'City Health Surplus', distance: '5.1 miles', expiry: '2025-01-10', qty: 15, lat: 41.8850, lng: -87.6350 },
-  { id: 4, name: 'Albuterol Inhaler', category: 'Respiratory', ngo: 'Helping Hands NGO', distance: '0.8 miles', expiry: '2024-08-05', qty: 3, lat: 41.8781, lng: -87.6298 },
+import { api } from '../lib/api';
+
+const defaultSampleMeds = [
+  { id: '1', name: 'Amoxicillin 500mg', category: 'Antibiotics', ngo: 'Helping Hands NGO', distance: '0.8 miles', expiry: '2024-11-20', qty: 45, quantity: 45, lat: 41.8781, lng: -87.6298, status: 'Active' },
+  { id: '2', name: 'Metformin 850mg', category: 'Diabetes', ngo: 'St. Jude Relief', distance: '2.4 miles', expiry: '2024-09-15', qty: 120, quantity: 120, lat: 41.8819, lng: -87.6231, status: 'Active' },
+  { id: '3', name: 'Lisinopril 10mg', category: 'Hypertension', ngo: 'City Health Surplus', distance: '5.1 miles', expiry: '2025-01-10', qty: 15, quantity: 15, lat: 41.8850, lng: -87.6350, status: 'Active' },
+  { id: '4', name: 'Albuterol Inhaler', category: 'Respiratory', ngo: 'Helping Hands NGO', distance: '0.8 miles', expiry: '2024-08-05', qty: 3, quantity: 3, lat: 41.8781, lng: -87.6298, status: 'Active' },
 ];
 
 const categories = ['All', 'Antibiotics', 'Diabetes', 'Hypertension', 'Respiratory', 'Pain Relief'];
@@ -40,11 +42,78 @@ export function BrowseMedicine() {
   const [view, setView] = React.useState('list');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [selectedCategory, setSelectedCategory] = React.useState('All');
+  const [medsList, setMedsList] = React.useState([]);
+  const [currentUser, setCurrentUser] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
 
-  const filteredMeds = sampleMeds.filter(med => 
-    (selectedCategory === 'All' || med.category === selectedCategory) &&
-    med.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  React.useEffect(() => {
+    async function loadMeds() {
+      try {
+        setLoading(true);
+        const profile = JSON.parse(localStorage.getItem('findmeds_profile')) || null;
+        setCurrentUser(profile);
+
+        const fetched = await api.getDonations();
+        const apiMeds = (fetched?.data || fetched || []);
+        
+        // Combine our custom api list with default samples to keep marketplace populated
+        const combined = [...apiMeds, ...defaultSampleMeds];
+        
+        // Remove duplicate items by medicine name
+        const unique = [];
+        const seenNames = new Set();
+        for (const item of combined) {
+          const normalName = (item.medicine || item.name || '').toLowerCase();
+          if (!seenNames.has(normalName)) {
+            seenNames.add(normalName);
+            unique.push(item);
+          }
+        }
+        
+        setMedsList(unique);
+      } catch (err) {
+        console.warn("Could not load dynamic drug listings.", err);
+        setMedsList(defaultSampleMeds);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadMeds();
+  }, []);
+
+  const handleClaim = async (id, nameOfMed) => {
+    const profile = currentUser || { fullName: 'Lifecare Community Ngo' };
+    const confirm = window.confirm(`Are you sure you want to claim ${nameOfMed} for redistribution?`);
+    if (!confirm) return;
+
+    try {
+      await api.claimDonation(id, { name: profile.fullName });
+      alert(`Successfully claimed ${nameOfMed}! A push notification has been sent to the matching entities and SMS backup triggered.`);
+      
+      // Update local state
+      setMedsList(prev => prev.map(m => {
+        const itemId = m.id || m._id;
+        if (itemId === id) {
+          return { ...m, status: 'Claimed', ngo: profile.fullName };
+        }
+        return m;
+      }));
+    } catch (err) {
+      console.error(err);
+      alert('Failed to register the claim. Make sure the Node server is running.');
+    }
+  };
+
+  const filteredMeds = medsList.filter(med => {
+    const medCategory = (med.category || '').toLowerCase();
+    const activeCat = selectedCategory.toLowerCase();
+    const isCatMatch = activeCat === 'all' || medCategory === activeCat || (activeCat === 'diabetes' && medCategory.includes('diab'));
+    
+    const medName = (med.medicine || med.name || '').toLowerCase();
+    const isSearchMatch = medName.includes(searchQuery.toLowerCase());
+    
+    return isCatMatch && isSearchMatch;
+  });
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -149,29 +218,46 @@ export function BrowseMedicine() {
                       {med.category}
                     </span>
                   </div>
-                  <h3 className="text-xl font-bold text-brand-secondary mb-1">{med.name}</h3>
+                  <h3 className="text-xl font-bold text-brand-secondary mb-1">{med.medicine || med.name}</h3>
                   <div className="space-y-3 mb-6">
                     <div className="flex items-center gap-2 text-sm text-slate-500">
                       <Building2 className="w-4 h-4 text-slate-400" />
-                      {med.ngo}
+                      {med.ngo || 'Original Donor'}
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-slate-500">
-                      <Navigation className="w-4 h-4 text-slate-400" />
-                      {med.distance} away
-                    </div>
+                    {med.pincode && (
+                      <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <Navigation className="w-4 h-4 text-slate-400" />
+                        Pincode: {med.pincode}
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 text-sm text-slate-500">
                       <Clock className="w-4 h-4 text-slate-400" />
-                      Expires: <span className="font-bold text-slate-700">{med.expiry}</span>
+                      Expires: <span className="font-bold text-slate-700">{med.expiry || med.expiryDate}</span>
                     </div>
                   </div>
                   <div className="mt-auto flex items-center justify-between pt-4 border-t border-slate-100">
                     <div className="text-sm font-bold text-brand-secondary">
-                      {med.qty} units available
+                      {med.qty || `${med.quantity} ${med.quantityUnit}`}
                     </div>
-                    <button className="flex items-center gap-1 text-sm font-bold text-brand-primary hover:translate-x-1 transition-transform">
-                      View details
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
+                    
+                    {med.status === 'Claimed' ? (
+                      <span className="text-xs bg-amber-50 text-amber-700 font-bold px-3 py-1.5 rounded-lg border border-amber-200">
+                        Claimed
+                      </span>
+                    ) : currentUser?.role === 'ngo' ? (
+                      <button 
+                        onClick={() => handleClaim(med.id || med._id, med.medicine || med.name)}
+                        className="bg-brand-primary text-white hover:bg-teal-700 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        Claim Surplus
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <button className="flex items-center gap-1 text-sm font-bold text-brand-primary hover:translate-x-1 transition-transform">
+                        Details
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </motion.div>
               ))}

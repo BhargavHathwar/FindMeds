@@ -15,6 +15,10 @@ import { Auth } from './pages/Auth';
 import { BrowseMedicine } from './pages/BrowseMedicine';
 import { AdminPortal } from './pages/AdminPortal';
 import { DonorListings } from './pages/DonorListings';
+import { DonorLayout } from './components/layout/DonorLayout';
+import { DonorTracking } from './pages/donor/DonorTracking';
+import { DonorHistory } from './pages/donor/DonorHistory';
+import { DonorProfile } from './pages/donor/DonorProfile';
 
 function ScrollToHash() {
   const { pathname, hash } = useLocation();
@@ -46,7 +50,17 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/browse" element={<BrowseMedicine />} />
-            <Route path="/donor-dashboard" element={<DonorDashboard />} />
+            
+            {/* Donor Portal Routes */}
+            <Route path="/donor-dashboard" element={<DonorLayout />}>
+              <Route index element={<DonorDashboard />} />
+            </Route>
+            <Route path="/donor" element={<DonorLayout />}>
+              <Route path="tracking" element={<DonorTracking />} />
+              <Route path="history" element={<DonorHistory />} />
+              <Route path="profile" element={<DonorProfile />} />
+            </Route>
+
             <Route path="/donor-listings" element={<DonorListings />} />
             <Route path="/ngo-dashboard" element={<NGODashboard />} />
             <Route path="/admin-portal" element={<AdminPortal />} />

@@ -2,14 +2,17 @@ import React from 'react';
 import { Formik, Form, Field } from 'formik';
 import * as Yup from 'yup';
 import { motion } from 'motion/react';
+import { cn } from '../lib/utils';
 import { 
   ShieldCheck, 
   ChevronDown,
   Calendar
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../lib/api';
 
 const validationSchema = Yup.object().shape({
+  name: Yup.string().required('Required'),
   category: Yup.string().required('Required'),
   manufacturer: Yup.string().required('Required'),
   batchNumber: Yup.string().required('Required'),
@@ -22,12 +25,37 @@ const validationSchema = Yup.object().shape({
 export function Donate() {
   const navigate = useNavigate();
 
-  const handleSubmit = (values) => {
+  const handleSubmit = async (values, { setSubmitting }) => {
     console.log('Donation Details:', values);
-    // Simulate submission
-    setTimeout(() => {
+    try {
+      const payload = {
+        medicine: values.name,
+        category: values.category,
+        manufacturer: values.manufacturer,
+        batch: values.batchNumber,
+        batchNumber: values.batchNumber, // dual mapping for backend controller compatibility
+        qty: `${values.quantity} ${values.quantityUnit}`,
+        quantity: Number(values.quantity),
+        quantityUnit: values.quantityUnit,
+        expiry: values.expiryDate,
+        expiryDate: values.expiryDate,
+        storageCondition: values.storageCondition,
+        originalSeal: values.originalSeal,
+        noWaterDamage: values.noWaterDamage,
+        sterilePackaging: values.sterilePackaging,
+        description: values.description,
+        pincode: localStorage.getItem('findmeds_pincode') || '600001',
+        status: 'Active'
+      };
+      
+      await api.listDonation(payload);
       navigate('/donor-dashboard');
-    }, 1000);
+    } catch (err) {
+      console.error('Error submitting listing:', err);
+      alert('Failed to register donation list in our database. Check database routing.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -42,6 +70,7 @@ export function Donate() {
       <div className="bg-white rounded-2xl p-8 sm:p-12 shadow-sm border border-[#f1f5f9]">
         <Formik
           initialValues={{
+            name: '',
             category: '',
             manufacturer: '',
             batchNumber: '',
@@ -71,6 +100,22 @@ export function Donate() {
                 </div>
               </div>
 
+              {/* Medication Name */}
+              <div>
+                <label className="block text-sm font-bold text-[#334155] mb-2">Medication / Item Name</label>
+                <Field 
+                  name="name" 
+                  placeholder="e.g. Paracetamol 500mg, Insulin Glargine" 
+                  className={cn(
+                    "w-full px-4 py-3.5 rounded-xl border focus:ring-2 focus:ring-brand-primary outline-none transition-all placeholder:text-[#cbd5e1]",
+                    errors.name && touched.name ? "border-red-500 bg-red-50" : "border-[#e2e8f0]"
+                  )}
+                />
+                {errors.name && touched.name && (
+                  <div className="text-red-500 text-xs font-semibold mt-1">{errors.name}</div>
+                )}
+              </div>
+
               {/* Item Category */}
               <div>
                 <label className="block text-sm font-bold text-[#334155] mb-2">Item Category</label>
@@ -80,7 +125,7 @@ export function Donate() {
                     <option value="analgesics">Analgesics</option>
                     <option value="antibiotics">Antibiotics</option>
                     <option value="cardiac">Cardiac Medications</option>
-                    <option value="diabetes">Diabetes Care Care</option>
+                    <option value="diabetes">Diabetes Care</option>
                     <option value="supplies">Protective Supplies</option>
                   </Field>
                   <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94a3b8] pointer-events-none" />
