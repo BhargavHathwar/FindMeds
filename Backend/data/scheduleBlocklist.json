@@ -1,0 +1,43 @@
+{
+  "scheduleH": [
+    "amoxicillin", "ampicillin", "azithromycin", "ciprofloxacin",
+    "clarithromycin", "doxycycline", "erythromycin", "metronidazole",
+    "norfloxacin", "ofloxacin", "tetracycline", "trimethoprim",
+    "atenolol", "amlodipine", "enalapril", "lisinopril", "metoprolol",
+    "ramipril", "valsartan", "losartan", "furosemide", "spironolactone",
+    "metformin", "glibenclamide", "glimepiride", "insulin",
+    "atorvastatin", "rosuvastatin", "simvastatin",
+    "omeprazole", "pantoprazole", "ranitidine",
+    "salbutamol", "montelukast", "budesonide",
+    "diclofenac", "ibuprofen", "naproxen",
+    "cetirizine", "loratadine", "fexofenadine",
+    "fluconazole", "itraconazole", "ketoconazole",
+    "acyclovir", "oseltamivir",
+    "warfarin", "clopidogrel", "aspirin",
+    "phenytoin", "carbamazepine", "valproate", "levetiracetam",
+    "sertraline", "fluoxetine", "escitalopram", "amitriptyline"
+  ],
+  "scheduleH1": [
+    "cefixime", "cefpodoxime", "ceftriaxone", "cefuroxime",
+    "meropenem", "imipenem", "ertapenem",
+    "piperacillin", "tazobactam",
+    "vancomycin", "teicoplanin",
+    "linezolid", "daptomycin",
+    "colistin", "polymyxin",
+    "amikacin", "gentamicin", "tobramycin",
+    "rifampicin", "isoniazid", "ethambutol", "pyrazinamide",
+    "levofloxacin", "moxifloxacin"
+  ],
+  "scheduleX": [
+    "morphine", "codeine", "oxycodone", "hydrocodone", "fentanyl",
+    "tramadol", "buprenorphine", "methadone", "pethidine",
+    "alprazolam", "diazepam", "lorazepam", "clonazepam",
+    "nitrazepam", "triazolam", "midazolam",
+    "zolpidem", "zopiclone",
+    "phenobarbital", "barbiturate",
+    "methamphetamine", "amphetamine", "methylphenidate",
+    "ketamine", "phencyclidine",
+    "cannabis", "cocaine", "heroin",
+    "testosterone", "anabolic steroid"
+  ]
+}

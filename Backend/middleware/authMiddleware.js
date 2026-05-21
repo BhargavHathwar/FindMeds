@@ -1,9 +1,9 @@
 // middleware/authMiddleware.js
-// Every protected API route runs this first.
-// The frontend sends the Firebase ID token in the Authorization header.
-// We verify it here and attach the decoded user to req.user.
+// Verifies JWT token on every protected route.
+// Token comes from Authorization: Bearer <token> header.
 
-import { auth } from '../config/firebase.js';
+import jwt from 'jsonwebtoken';
+import User from '../models/User.js';
 
 export const verifyToken = async (req, res, next) => {
   try {
@@ -17,33 +17,32 @@ export const verifyToken = async (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Attach decoded user info to the request for use in controllers
+    // Attach user info to req — available in all controllers after this
     req.user = {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      role: decodedToken.role || null, // custom claim set during registration
+      id: decoded.id,
+      role: decoded.role,
+      email: decoded.email,
     };
 
     next();
   } catch (error) {
-    console.error('[AuthMiddleware] Token verification failed:', error.message);
-    return res.status(403).json({
-      success: false,
-      message: 'Invalid or expired token. Please log in again.',
-    });
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, message: 'Token expired. Please log in again.' });
+    }
+    return res.status(403).json({ success: false, message: 'Invalid token.' });
   }
 };
 
-// Role-based access guard — use after verifyToken
-// Usage: router.get('/admin-route', verifyToken, requireRole('admin'), controller)
-export const requireRole = (...allowedRoles) => {
+// Role guard — use after verifyToken
+// Usage: router.post('/route', verifyToken, requireRole('donor'), controller)
+export const requireRole = (...roles) => {
   return (req, res, next) => {
-    if (!req.user || !allowedRoles.includes(req.user.role)) {
+    if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: `Access denied. Required role: ${allowedRoles.join(' or ')}`,
+        message: `Access denied. Required: ${roles.join(' or ')}`,
       });
     }
     next();

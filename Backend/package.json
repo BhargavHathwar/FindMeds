@@ -1,30 +1,34 @@
 {
   "name": "findmeds-backend",
   "version": "1.0.0",
-  "description": "FindMeds Backend API — Member 2",
+  "description": "FindMeds Backend API — Member 2 | MongoDB Atlas + JWT",
   "main": "server.js",
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "seed": "node config/dbSeeder.js",
     "dev": "nodemon server.js",
     "test": "node --experimental-vm-modules node_modules/.bin/jest"
   },
   "dependencies": {
     "axios": "^1.6.0",
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.2.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
-    "firebase-admin": "^13.10.0",
     "helmet": "^7.1.0",
-    "mongodb": "^7.2.0",
-    "multer": "^2.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.3.4",
+    "multer": "^1.4.4",
+    "multer-storage-cloudinary": "^4.0.0",
     "node-cron": "^3.0.3",
-    "twilio": "^6.0.2",
-    "uuid": "^9.0.0"
+    "nodemailer": "^6.9.13",
+    "socket.io": "^4.7.5",
+    "twilio": "^5.0.4"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "nodemon": "^3.0.2"
   }
 }

@@ -1,45 +1,45 @@
 // controllers/analyticsController.js
-// Provides aggregate statistics for AdminPortal.jsx and DonorDashboard.jsx
+// MongoDB aggregation pipeline for admin + donor dashboards.
+// Month 3 task: GET /api/analytics
 
-import { db } from '../config/firebase.js';
+import Donation from '../models/Donation.js';
+import NGO from '../models/NGO.js';
+import User from '../models/User.js';
+import AuditLog from '../models/AuditLog.js';
 
-// GET /api/analytics/summary  (protected — admin only)
-// Returns platform-wide stats: total donations, claims, NGOs, flagged items
+// GET /api/analytics/summary  (admin only)
 export const getAdminAnalytics = async (req, res) => {
   try {
-    const [donationsSnap, ngosSnap, usersSnap, logsSnap] = await Promise.all([
-      db.collection('donations').get(),
-      db.collection('ngos').where('verified', '==', true).get(),
-      db.collection('users').get(),
-      db.collection('audit_logs').orderBy('timestamp', 'desc').limit(20).get(),
-    ]);
+    // Parallel queries for speed
+    const [statusBreakdown, categoryBreakdown, totalNGOs, totalUsers, recentLogs] =
+      await Promise.all([
+        // Status breakdown via aggregation
+        Donation.aggregate([
+          { $group: { _id: '$status', count: { $sum: 1 } } },
+        ]),
+        // Category breakdown
+        Donation.aggregate([
+          { $match: { status: 'available' } },
+          { $group: { _id: '$category', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 10 },
+        ]),
+        NGO.countDocuments({ verified: true }),
+        User.countDocuments(),
+        AuditLog.find().sort({ createdAt: -1 }).limit(20).populate('actorId', 'name email'),
+      ]);
 
-    const donations = donationsSnap.docs.map(d => d.data());
-
-    const stats = {
-      totalDonations: donations.length,
-      available: donations.filter(d => d.status === 'available').length,
-      claimed: donations.filter(d => d.status === 'claimed').length,
-      cancelled: donations.filter(d => d.status === 'cancelled').length,
-      totalVerifiedNGOs: ngosSnap.size,
-      totalUsers: usersSnap.size,
-    };
-
-    // Category breakdown
-    const categoryMap = {};
-    donations.forEach(d => {
-      if (d.category) {
-        categoryMap[d.category] = (categoryMap[d.category] || 0) + 1;
-      }
+    // Flatten status breakdown into a simple object
+    const stats = { totalDonations: 0, available: 0, claimed: 0, cancelled: 0, auto_expired: 0 };
+    statusBreakdown.forEach(s => {
+      stats[s._id] = s.count;
+      stats.totalDonations += s.count;
     });
-
-    // Recent audit logs
-    const recentLogs = logsSnap.docs.map(doc => doc.data());
 
     return res.status(200).json({
       success: true,
-      stats,
-      categoryBreakdown: categoryMap,
+      stats: { ...stats, totalVerifiedNGOs: totalNGOs, totalUsers },
+      categoryBreakdown,
       recentActivity: recentLogs,
     });
   } catch (error) {
@@ -48,31 +48,28 @@ export const getAdminAnalytics = async (req, res) => {
   }
 };
 
-// GET /api/analytics/donor/:uid  (protected — donor only)
-// Returns a single donor's personal stats for DonorDashboard.jsx
-export const getDonorStats = async (req, res) => {
+// GET /api/analytics/donor  (donor only)
+export const getDonorAnalytics = async (req, res) => {
   try {
-    const donorUid = req.user.uid;
+    const [statusBreakdown, recentDonations] = await Promise.all([
+      Donation.aggregate([
+        { $match: { donorId: req.user.id } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      Donation.find({ donorId: req.user.id })
+        .populate('claimedBy', 'name email')
+        .sort({ createdAt: -1 })
+        .limit(5),
+    ]);
 
-    const snap = await db
-      .collection('donations')
-      .where('donorUid', '==', donorUid)
-      .get();
-
-    const donations = snap.docs.map(d => d.data());
-
-    return res.status(200).json({
-      success: true,
-      stats: {
-        totalDonations: donations.length,
-        claimed: donations.filter(d => d.status === 'claimed').length,
-        available: donations.filter(d => d.status === 'available').length,
-        cancelled: donations.filter(d => d.status === 'cancelled').length,
-      },
-      recentDonations: donations.slice(0, 5),
+    const stats = { total: 0, available: 0, claimed: 0, cancelled: 0 };
+    statusBreakdown.forEach(s => {
+      stats[s._id] = s.count;
+      stats.total += s.count;
     });
+
+    return res.status(200).json({ success: true, stats, recentDonations });
   } catch (error) {
-    console.error('[AnalyticsController] getDonorStats error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to load donor stats.' });
+    return res.status(500).json({ success: false, message: 'Failed to load donor analytics.' });
   }
 };
