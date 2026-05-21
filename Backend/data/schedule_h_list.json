@@ -1,0 +1,8 @@
+[
+  { "drugName": "Alprazolam", "schedule": "Schedule H", "category": "Psychotropic / Benzodiazepine" },
+  { "drugName": "Codeine Phosphate", "schedule": "Schedule H1", "category": "Narcotic / Opioid Antitussive" },
+  { "drugName": "Diazepam", "schedule": "Schedule H", "category": "Sedative / Anxiolytic" },
+  { "drugName": "Chlordiazepoxide", "schedule": "Schedule H", "category": "Tranquilizer" },
+  { "drugName": "Ketamine Hydrochloride", "schedule": "Schedule X", "category": "General Anesthetic" },
+  { "drugName": "Tramadol", "schedule": "Schedule H1", "category": "Opioid Analgesic" }
+]
