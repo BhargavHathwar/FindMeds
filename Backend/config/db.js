@@ -2,6 +2,7 @@
 // Connects to MongoDB Atlas via Mongoose.
 // Called once in server.js — connection is reused across all models.
 
+import 'dotenv/config';
 import mongoose from 'mongoose';
 
 const connectDB = async () => {
