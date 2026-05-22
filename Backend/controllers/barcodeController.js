@@ -1,138 +1,208 @@
 // controllers/barcodeController.js
-// Handles medicine barcode lookup.
-// Step 1: Hit Open Food Facts API with the EAN-13 barcode
-// Step 2: If not found, fall back to RxNav for drug classification
-// Step 3: Return structured drug info back to the frontend Donate.jsx form
+// Member 2 Month 1 + Month 2 core task.
+// GET /api/barcode/:barcode  — EAN-13 lookup via Open Food Facts → RxNav fallback
+// POST /api/verify-barcode  — runs all 5 safety gates, returns pass/fail per gate
 
 import axios from 'axios';
-import { db } from '../config/firebase.js';
+import Drug from '../models/Drug.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
-// Schedule H / H1 drugs that cannot be donated — this list will be
-// expanded by Member 3 into a full JSON rules file
-const RESTRICTED_SCHEDULE = [
-  'morphine', 'codeine', 'tramadol', 'oxycodone', 'fentanyl',
-  'alprazolam', 'diazepam', 'lorazepam', 'clonazepam', 'zolpidem',
-  'phenobarbital', 'methamphetamine', 'amphetamine',
-  // Schedule H antibiotics (prescription only — cannot be donated without proof)
-  'ciprofloxacin', 'azithromycin', 'amoxicillin-clavulanate',
+// Load Schedule H/H1/X blocklist from JSON file
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const blocklist = JSON.parse(
+  readFileSync(path.join(__dirname, '../data/scheduleBlocklist.json'), 'utf-8')
+);
+
+const allBlocked = [
+  ...blocklist.scheduleH,
+  ...blocklist.scheduleH1,
+  ...blocklist.scheduleX,
 ];
 
-const isRestricted = (drugName) => {
-  if (!drugName) return false;
-  return RESTRICTED_SCHEDULE.some(drug =>
-    drugName.toLowerCase().includes(drug)
-  );
+const getSchedule = (drugName) => {
+  const n = drugName.toLowerCase();
+  if (blocklist.scheduleX.some(d => n.includes(d))) return 'X';
+  if (blocklist.scheduleH1.some(d => n.includes(d))) return 'H1';
+  if (blocklist.scheduleH.some(d => n.includes(d))) return 'H';
+  return null;
 };
 
+// ── Barcode Lookup ───────────────────────────────────────────────────────────
+
 // GET /api/barcode/:barcode
-// Looks up a medicine by its EAN-13 barcode
 export const lookupBarcode = async (req, res) => {
   const { barcode } = req.params;
 
   if (!barcode || barcode.length < 8) {
-    return res.status(400).json({
-      success: false,
-      message: 'Invalid barcode. Must be at least 8 digits.',
-    });
+    return res.status(400).json({ success: false, message: 'Invalid barcode.' });
   }
 
   try {
-    // ── Step 1: Check our local Firestore drug DB first (faster) ──────────
-    const localSnap = await db.collection('drugs').doc(barcode).get();
-    if (localSnap.exists) {
-      const drug = localSnap.data();
+    // Step 1: Check local MongoDB drug cache first
+    const cached = await Drug.findOne({ barcode });
+    if (cached) {
       return res.status(200).json({
         success: true,
         source: 'local_db',
-        drug: {
-          ...drug,
-          isRestricted: isRestricted(drug.drugName),
-        },
+        drug: cached,
+        schedule: cached.schedule,
+        isBlocked: cached.schedule !== null,
       });
     }
 
-    // ── Step 2: Open Food Facts API (handles Indian EAN-13 barcodes) ──────
-    let drugInfo = null;
+    // Step 2: Open Food Facts API
+    let drugData = null;
     try {
-      const offResponse = await axios.get(
+      const offRes = await axios.get(
         `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`,
-        { timeout: 5000 }
+        { timeout: 6000 }
       );
-
-      if (offResponse.data.status === 1) {
-        const product = offResponse.data.product;
-        drugInfo = {
+      if (offRes.data?.status === 1) {
+        const p = offRes.data.product;
+        drugData = {
           barcode,
-          drugName: product.product_name || product.generic_name || 'Unknown',
-          manufacturer: product.brands || 'Unknown',
-          category: product.categories_tags?.[0]?.replace('en:', '') || 'General',
-          composition: product.ingredients_text || null,
-          schedule: null,
+          drugName: p.product_name || p.generic_name || 'Unknown',
+          manufacturer: p.brands || null,
+          category: p.categories_tags?.[0]?.replace('en:', '') || null,
+          composition: p.ingredients_text || null,
           coldChainReq: false,
         };
       }
-    } catch (offError) {
-      console.warn('[BarcodeController] Open Food Facts failed:', offError.message);
+    } catch (e) {
+      console.warn('[BarcodeController] Open Food Facts failed:', e.message);
     }
 
-    // ── Step 3: RxNav fallback for pharmaceutical classification ──────────
-    if (!drugInfo) {
+    // Step 3: RxNav fallback
+    if (!drugData) {
       try {
-        // RxNav works by drug name — we try a generic search using the barcode as hint
-        const rxResponse = await axios.get(
+        const rxRes = await axios.get(
           `https://rxnav.nlm.nih.gov/REST/rxcui.json?idtype=UPC&id=${barcode}`,
-          { timeout: 5000 }
+          { timeout: 6000 }
         );
-
-        const rxcui = rxResponse.data?.idGroup?.rxnormId?.[0];
+        const rxcui = rxRes.data?.idGroup?.rxnormId?.[0];
         if (rxcui) {
           const detailRes = await axios.get(
             `https://rxnav.nlm.nih.gov/REST/rxcui/${rxcui}/properties.json`,
-            { timeout: 5000 }
+            { timeout: 6000 }
           );
           const props = detailRes.data?.properties;
           if (props) {
-            drugInfo = {
+            drugData = {
               barcode,
-              drugName: props.name || 'Unknown',
-              manufacturer: 'Unknown',
-              category: props.tty || 'Pharmaceutical',
+              drugName: props.name,
+              manufacturer: null,
+              category: props.tty || 'pharmaceutical',
               composition: null,
-              schedule: null,
               coldChainReq: false,
             };
           }
         }
-      } catch (rxError) {
-        console.warn('[BarcodeController] RxNav fallback failed:', rxError.message);
+      } catch (e) {
+        console.warn('[BarcodeController] RxNav fallback failed:', e.message);
       }
     }
 
-    // ── Step 4: Nothing found ─────────────────────────────────────────────
-    if (!drugInfo) {
+    if (!drugData) {
       return res.status(404).json({
         success: false,
-        message: 'Medicine not found in any database. Please enter details manually.',
+        message: 'Medicine not found. Please enter details manually.',
         barcode,
       });
     }
 
-    // Cache the result in Firestore drugs collection for future lookups
-    await db.collection('drugs').doc(barcode).set(drugInfo);
+    // Detect schedule from drug name
+    const schedule = getSchedule(drugData.drugName);
+    drugData.schedule = schedule;
+
+    // Cache in MongoDB
+    const saved = await Drug.create(drugData);
 
     return res.status(200).json({
       success: true,
       source: 'api_lookup',
-      drug: {
-        ...drugInfo,
-        isRestricted: isRestricted(drugInfo.drugName),
-      },
+      drug: saved,
+      schedule,
+      isBlocked: schedule !== null,
     });
   } catch (error) {
     console.error('[BarcodeController] lookupBarcode error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Barcode lookup failed. Please try again.',
+    return res.status(500).json({ success: false, message: 'Barcode lookup failed.' });
+  }
+};
+
+// ── 5-Gate Verification Pipeline ─────────────────────────────────────────────
+
+// POST /api/verify-barcode
+// Runs all 5 safety gates. Returns pass/fail per gate.
+// Frontend shows a loading gate display (Member 1's Month 2 task).
+export const verifyBarcode = async (req, res) => {
+  try {
+    const { drugName, category, expiryDate, originalSeal, photoUrl } = req.body;
+
+    const gates = [];
+
+    // Gate 1 — Drug Recognized
+    gates.push({
+      gate: 1,
+      name: 'Drug Recognized',
+      passed: Boolean(drugName && drugName.trim().length > 2),
+      reason: 'Drug name must be identified from barcode or entered manually.',
     });
+
+    // Gate 2 — Expiry 3+ months away
+    const expiry = new Date(expiryDate);
+    const threeMonths = new Date();
+    threeMonths.setMonth(threeMonths.getMonth() + 3);
+    gates.push({
+      gate: 2,
+      name: 'Expiry Valid (3+ months)',
+      passed: !isNaN(expiry) && expiry > threeMonths,
+      reason: `Medicine must expire after ${threeMonths.toDateString()}.`,
+    });
+
+    // Gate 3 — Not Schedule H/H1/X (CDSCO blocklist)
+    const schedule = getSchedule(drugName || '');
+    gates.push({
+      gate: 3,
+      name: 'Not Schedule H/H1/X',
+      passed: schedule === null,
+      reason: schedule
+        ? `This medicine is Schedule ${schedule} and cannot be donated.`
+        : 'Medicine is not a controlled substance.',
+    });
+
+    // Gate 4 — Category Classified
+    gates.push({
+      gate: 4,
+      name: 'Category Classified',
+      passed: Boolean(category && category.trim().length > 0),
+      reason: 'A valid medicine category must be selected.',
+    });
+
+    // Gate 5 — Photo Proof Uploaded
+    gates.push({
+      gate: 5,
+      name: 'Photo Proof Uploaded',
+      passed: Boolean(photoUrl && photoUrl.length > 0),
+      reason: 'A photo of the medicine package must be uploaded to Cloudinary.',
+    });
+
+    const allPassed = gates.every(g => g.passed);
+    const failedGates = gates.filter(g => !g.passed).map(g => g.name);
+
+    return res.status(allPassed ? 200 : 422).json({
+      success: allPassed,
+      allPassed,
+      gates,
+      failedGates,
+      message: allPassed
+        ? 'All 5 verification gates passed. Donation can be listed.'
+        : `Failed gates: ${failedGates.join(', ')}`,
+    });
+  } catch (error) {
+    console.error('[BarcodeController] verifyBarcode error:', error);
+    return res.status(500).json({ success: false, message: 'Verification failed.' });
   }
 };

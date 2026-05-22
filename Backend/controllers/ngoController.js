@@ -1,210 +1,156 @@
 // controllers/ngoController.js
-// Handles NGO-specific operations:
-// - View/manage their inventory (NGODashboard.jsx)
-// - Update wishlist (what medicines they need)
-// - Admin: verify NGO via Darpan API (AdminPortal.jsx)
+// NGO dashboard (inventory + stats), wishlist editor, admin verification via Darpan API.
 
-import { db } from '../config/firebase.js';
+import NGO from '../models/NGO.js';
+import Donation from '../models/Donation.js';
+import AuditLog from '../models/AuditLog.js';
 import axios from 'axios';
 
-// GET /api/ngo/dashboard  (protected — ngo only)
-// Returns the NGO's inventory (claimed donations they hold), stats, and pending requests
+// GET /api/ngo/dashboard  (ngo only)
 export const getNGODashboard = async (req, res) => {
   try {
-    const ngoId = req.user.uid;
+    const ngo = await NGO.findOne({ userId: req.user.id });
+    if (!ngo) return res.status(404).json({ success: false, message: 'NGO profile not found.' });
 
-    // Get NGO profile
-    const ngoSnap = await db.collection('ngos').doc(ngoId).get();
-    if (!ngoSnap.exists) {
-      return res.status(404).json({ success: false, message: 'NGO profile not found.' });
-    }
+    // All donations claimed by this NGO = their inventory
+    const inventory = await Donation.find({ claimedBy: ngo._id }).sort({ createdAt: -1 });
 
-    // Get all donations claimed by this NGO
-    const claimedSnap = await db
-      .collection('donations')
-      .where('claimedBy', '==', ngoId)
-      .orderBy('claimedAt', 'desc')
-      .get();
-
-    const inventory = claimedSnap.docs.map(doc => {
-      const d = doc.data();
-      const expiryDate = new Date(d.expiryDate);
-      const now = new Date();
-      const monthsLeft = (expiryDate - now) / (1000 * 60 * 60 * 24 * 30);
-
-      let status = 'Healthy';
-      if (monthsLeft < 1) status = 'Critical Level';
-      else if (monthsLeft < 3) status = 'Expiring Soon';
-
-      return {
-        donationId: d.donationId,
-        name: d.drugName,
-        batch: d.batchNumber || 'N/A',
-        expiry: d.expiryDate,
-        qty: d.quantity,
-        quantityUnit: d.quantityUnit,
-        status,
-        category: d.category,
-      };
+    // Tag each item with health status
+    const now = new Date();
+    const tagged = inventory.map(d => {
+      const monthsLeft = (new Date(d.expiryDate) - now) / (1000 * 60 * 60 * 24 * 30);
+      const status =
+        monthsLeft < 1 ? 'Critical Level' :
+        monthsLeft < 3 ? 'Expiring Soon' : 'Healthy';
+      return { ...d.toObject(), healthStatus: status };
     });
 
-    // Get available donations near this NGO (incoming donors on map)
-    const availableSnap = await db
-      .collection('donations')
-      .where('status', '==', 'available')
-      .limit(10)
-      .get();
-    const available = availableSnap.docs.map(doc => doc.data());
-
-    const ngo = ngoSnap.data();
+    // Available donations nearby for the map panel
+    const nearby = ngo.location?.coordinates?.[0]
+      ? await Donation.find({
+          status: 'available',
+          location: {
+            $nearSphere: {
+              $geometry: ngo.location,
+              $maxDistance: 50000,
+            },
+          },
+        }).limit(10).populate('donorId', 'name email')
+      : [];
 
     return res.status(200).json({
       success: true,
       ngo: {
-        ngoId: ngo.ngoId,
+        id: ngo._id,
         name: ngo.name,
         verified: ngo.verified,
         reliabilityScore: ngo.reliabilityScore,
         pickupsCompleted: ngo.pickupsCompleted,
         wishlist: ngo.wishlist,
+        coldChain: ngo.coldChain,
       },
       stats: {
-        totalStock: inventory.reduce((sum, i) => sum + i.qty, 0),
-        criticalItems: inventory.filter(i => i.status === 'Critical Level').length,
-        expiringItems: inventory.filter(i => i.status === 'Expiring Soon').length,
+        totalStock: tagged.reduce((s, i) => s + i.quantity, 0),
+        totalItems: tagged.length,
+        criticalItems: tagged.filter(i => i.healthStatus === 'Critical Level').length,
+        expiringItems: tagged.filter(i => i.healthStatus === 'Expiring Soon').length,
       },
-      inventory,
-      availableDonations: available,
+      inventory: tagged,
+      nearbyDonations: nearby,
     });
   } catch (error) {
-    console.error('[NGOController] getNGODashboard error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to load NGO dashboard.' });
+    console.error('[NGOController] getDashboard error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to load dashboard.' });
   }
 };
 
-// PUT /api/ngo/wishlist  (protected — ngo only)
-// NGO updates their medicine wishlist (drives the matching score)
+// PUT /api/ngo/wishlist  (ngo only)
 export const updateWishlist = async (req, res) => {
   try {
-    const { wishlist } = req.body;
-
-    if (!Array.isArray(wishlist)) {
-      return res.status(400).json({ success: false, message: 'wishlist must be an array of category strings.' });
+    const { wishlist, location, coldChain, phone } = req.body;
+    const update = {};
+    if (Array.isArray(wishlist)) update.wishlist = wishlist;
+    if (coldChain !== undefined) update.coldChain = Boolean(coldChain);
+    if (phone) update.phone = phone;
+    if (location?.lat && location?.lng) {
+      update.location = {
+        type: 'Point',
+        coordinates: [parseFloat(location.lng), parseFloat(location.lat)],
+      };
     }
 
-    await db.collection('ngos').doc(req.user.uid).update({ wishlist });
+    const ngo = await NGO.findOneAndUpdate({ userId: req.user.id }, { $set: update }, { new: true });
+    if (!ngo) return res.status(404).json({ success: false, message: 'NGO not found.' });
 
-    return res.status(200).json({ success: true, message: 'Wishlist updated.', wishlist });
+    return res.status(200).json({ success: true, message: 'NGO profile updated.', ngo });
   } catch (error) {
-    console.error('[NGOController] updateWishlist error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to update wishlist.' });
+    return res.status(500).json({ success: false, message: 'Failed to update.' });
   }
 };
 
 // GET /api/ngo/all  (public)
-// Returns verified NGOs for BrowseMedicine.jsx NGO Registry section
 export const getAllNGOs = async (req, res) => {
   try {
-    const snap = await db.collection('ngos').where('verified', '==', true).get();
-
-    const ngos = snap.docs.map(doc => {
-      const n = doc.data();
-      return {
-        ngoId: n.ngoId,
-        name: n.name,
-        location: n.location,
-        coldChain: n.coldChain,
-        reliabilityScore: n.reliabilityScore,
-        pickupsCompleted: n.pickupsCompleted,
-        wishlist: n.wishlist,
-      };
-    });
-
+    const ngos = await NGO.find({ verified: true }).select('-__v');
     return res.status(200).json({ success: true, total: ngos.length, ngos });
   } catch (error) {
-    console.error('[NGOController] getAllNGOs error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch NGOs.' });
   }
 };
 
-// POST /api/ngo/verify/:ngoId  (protected — admin only)
-// Admin verifies an NGO via Darpan API (AdminPortal.jsx verification queue)
+// GET /api/ngo/pending  (admin only)
+export const getPendingNGOs = async (req, res) => {
+  try {
+    const pending = await NGO.find({ verified: false }).select('name email darpanId createdAt userId');
+    return res.status(200).json({ success: true, total: pending.length, pending });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch pending NGOs.' });
+  }
+};
+
+// POST /api/ngo/verify/:ngoId  (admin only)
+// Checks Darpan API + sets verified flag
 export const verifyNGO = async (req, res) => {
   try {
-    const { ngoId } = req.params;
-    const { approved } = req.body; // true = approve, false = reject
+    const { approved } = req.body;
+    const ngo = await NGO.findById(req.params.ngoId);
+    if (!ngo) return res.status(404).json({ success: false, message: 'NGO not found.' });
 
-    const ngoSnap = await db.collection('ngos').doc(ngoId).get();
-    if (!ngoSnap.exists) {
-      return res.status(404).json({ success: false, message: 'NGO not found.' });
-    }
-
-    const ngo = ngoSnap.data();
-
-    // Check against Darpan API if darpanId is provided
     let darpanVerified = false;
+
+    // Check Darpan API if darpanId exists
     if (ngo.darpanId && process.env.DARPAN_API_KEY) {
       try {
-        const darpanRes = await axios.get(
+        const res = await axios.get(
           `https://darpan.gov.in/api/ngo/verify/${ngo.darpanId}`,
-          {
-            headers: { 'Authorization': `Bearer ${process.env.DARPAN_API_KEY}` },
-            timeout: 5000,
-          }
+          { headers: { Authorization: `Bearer ${process.env.DARPAN_API_KEY}` }, timeout: 5000 }
         );
-        darpanVerified = darpanRes.data?.verified === true;
-      } catch (darpanErr) {
-        console.warn('[NGOController] Darpan API check failed:', darpanErr.message);
-        // Proceed with manual admin approval — Darpan API may be unavailable
+        darpanVerified = res.data?.verified === true;
+      } catch (err) {
+        console.warn('[NGOController] Darpan API failed — proceeding with manual approval:', err.message);
       }
     }
 
-    await db.collection('ngos').doc(ngoId).update({
+    await NGO.findByIdAndUpdate(req.params.ngoId, {
       verified: approved === true,
       darpanVerified,
-      verifiedAt: new Date().toISOString(),
-      verifiedBy: req.user.uid,
+      verifiedAt: new Date(),
+      verifiedBy: req.user.id,
     });
 
-    await db.collection('audit_logs').add({
-      donationId: null,
+    await AuditLog.create({
       action: approved ? 'ngo_approved' : 'ngo_rejected',
-      actorUid: req.user.uid,
-      timestamp: new Date().toISOString(),
-      notes: `NGO ${ngo.name} ${approved ? 'approved' : 'rejected'}. Darpan verified: ${darpanVerified}`,
+      actorId: req.user.id,
+      notes: `NGO ${ngo.name} ${approved ? 'approved' : 'rejected'}. Darpan: ${darpanVerified}`,
     });
 
     return res.status(200).json({
       success: true,
-      message: `NGO ${approved ? 'approved' : 'rejected'} successfully.`,
+      message: `NGO ${approved ? 'approved' : 'rejected'}.`,
       darpanVerified,
     });
   } catch (error) {
     console.error('[NGOController] verifyNGO error:', error);
-    return res.status(500).json({ success: false, message: 'NGO verification failed.' });
-  }
-};
-
-// GET /api/ngo/pending  (protected — admin only)
-// Returns NGOs awaiting admin verification (AdminPortal.jsx queue)
-export const getPendingNGOs = async (req, res) => {
-  try {
-    const snap = await db.collection('ngos').where('verified', '==', false).get();
-
-    const pending = snap.docs.map(doc => {
-      const n = doc.data();
-      return {
-        ngoId: n.ngoId,
-        name: n.name,
-        email: n.email,
-        darpanId: n.darpanId,
-        createdAt: n.createdAt,
-      };
-    });
-
-    return res.status(200).json({ success: true, total: pending.length, pending });
-  } catch (error) {
-    console.error('[NGOController] getPendingNGOs error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch pending NGOs.' });
+    return res.status(500).json({ success: false, message: 'Verification failed.' });
   }
 };

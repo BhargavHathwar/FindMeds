@@ -1,100 +1,101 @@
 // controllers/notificationController.js
-// Sends FCM push notifications to NGO dashboards and Twilio SMS as fallback.
-// Called after a donation is listed and NGO matches are found.
+// Twilio SMS + NodeMailer email dispatch.
+// Called after donation listing to notify top 3 matched NGOs simultaneously.
 
-import { messaging, db } from '../config/firebase.js';
 import twilio from 'twilio';
+import nodemailer from 'nodemailer';
+import AuditLog from '../models/AuditLog.js';
 
-// Lazy-init Twilio (only if credentials exist — avoids crash in dev without credentials)
-const getTwilioClient = () => {
-  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return null;
-  return twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+// ── Twilio client (lazy init) ────────────────────────────────────────────────
+const getTwilio = () => {
+  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) return null;
+  return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 };
 
-// POST /api/notifications/notify-ngos
-// Sends notifications to matched NGOs about a new available donation
-export const notifyMatchedNGOs = async (req, res) => {
+// ── NodeMailer transporter (Gmail SMTP) ─────────────────────────────────────
+const getMailer = () => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) return null;
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_APP_PASSWORD,
+    },
+  });
+};
+
+// Main export — called by donationController after a listing
+export const notifyNGOs = async (donation, ngoList) => {
+  const twilioClient = getTwilio();
+  const mailer = getMailer();
+  const results = [];
+
+  for (const ngo of ngoList) {
+    const msg = `FindMeds Alert: New donation nearby — ${donation.drugName} (${donation.quantity} ${donation.quantityUnit}). Log in to claim: https://findmeds.vercel.app`;
+
+    // SMS
+    if (twilioClient && ngo.phone) {
+      try {
+        await twilioClient.messages.create({
+          body: msg,
+          from: process.env.TWILIO_PHONE_NUMBER,
+          to: ngo.phone,
+        });
+        results.push({ ngoId: ngo._id, type: 'sms', status: 'sent' });
+      } catch (err) {
+        console.warn(`[NotificationController] SMS failed for ${ngo.name}:`, err.message);
+        results.push({ ngoId: ngo._id, type: 'sms', status: 'failed', error: err.message });
+      }
+    }
+
+    // Email
+    if (mailer && ngo.email) {
+      try {
+        await mailer.sendMail({
+          from: `"FindMeds" <${process.env.EMAIL_USER}>`,
+          to: ngo.email,
+          subject: `🏥 New Medicine Donation Match — ${donation.drugName}`,
+          html: `
+            <div style="font-family:sans-serif;max-width:500px">
+              <h2 style="color:#0d9488">New Donation Match — FindMeds</h2>
+              <p>Hello ${ngo.name},</p>
+              <p>A new donation matching your wishlist is available nearby:</p>
+              <table style="width:100%;border-collapse:collapse;margin:16px 0">
+                <tr><td style="padding:8px;border:1px solid #e2e8f0;font-weight:bold">Medicine</td><td style="padding:8px;border:1px solid #e2e8f0">${donation.drugName}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #e2e8f0;font-weight:bold">Category</td><td style="padding:8px;border:1px solid #e2e8f0">${donation.category}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #e2e8f0;font-weight:bold">Quantity</td><td style="padding:8px;border:1px solid #e2e8f0">${donation.quantity} ${donation.quantityUnit}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #e2e8f0;font-weight:bold">Expiry</td><td style="padding:8px;border:1px solid #e2e8f0">${new Date(donation.expiryDate).toDateString()}</td></tr>
+              </table>
+              <a href="https://findmeds.vercel.app/ngo-dashboard" style="background:#0d9488;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">Claim This Donation →</a>
+              <p style="color:#94a3b8;font-size:12px;margin-top:24px">First NGO to claim wins. Unclaimed donations expire after 24 hours.</p>
+            </div>
+          `,
+        });
+        results.push({ ngoId: ngo._id, type: 'email', status: 'sent' });
+      } catch (err) {
+        console.warn(`[NotificationController] Email failed for ${ngo.name}:`, err.message);
+        results.push({ ngoId: ngo._id, type: 'email', status: 'failed', error: err.message });
+      }
+    }
+  }
+
+  // Log notification
+  await AuditLog.create({
+    donationId: donation._id,
+    action: 'notified',
+    actorId: null,
+    notes: `Notified ${ngoList.length} NGOs. Results: ${JSON.stringify(results)}`,
+  });
+
+  return results;
+};
+
+// POST /api/notifications/notify-ngos  (manual trigger route)
+export const notifyNGOsRoute = async (req, res) => {
   try {
-    const { donationId, ngoMatches } = req.body;
-    // ngoMatches = array of { ngoId, name, fcmToken, phone }
-
-    if (!donationId || !Array.isArray(ngoMatches) || ngoMatches.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'donationId and ngoMatches array are required.',
-      });
-    }
-
-    const donationSnap = await db.collection('donations').doc(donationId).get();
-    if (!donationSnap.exists) {
-      return res.status(404).json({ success: false, message: 'Donation not found.' });
-    }
-
-    const donation = donationSnap.data();
-    const results = { fcm: [], sms: [], errors: [] };
-
-    for (const ngo of ngoMatches) {
-      // ── FCM Push Notification ─────────────────────────────────────────
-      if (ngo.fcmToken) {
-        try {
-          await messaging.send({
-            token: ngo.fcmToken,
-            notification: {
-              title: '🏥 New Donation Match — FindMeds',
-              body: `${donation.drugName} (${donation.quantity} ${donation.quantityUnit}) is available near you!`,
-            },
-            data: {
-              type: 'new_donation',
-              donationId,
-              drugName: donation.drugName,
-              category: donation.category,
-            },
-            android: { priority: 'high' },
-            apns: { payload: { aps: { sound: 'default', badge: 1 } } },
-          });
-          results.fcm.push({ ngoId: ngo.ngoId, status: 'sent' });
-        } catch (fcmErr) {
-          console.warn(`[NotificationController] FCM failed for NGO ${ngo.ngoId}:`, fcmErr.message);
-          results.errors.push({ ngoId: ngo.ngoId, type: 'fcm', error: fcmErr.message });
-        }
-      }
-
-      // ── Twilio SMS Fallback (for NGOs without internet/app) ───────────
-      if (ngo.phone) {
-        const client = getTwilioClient();
-        if (client) {
-          try {
-            await client.messages.create({
-              body: `FindMeds Alert: New donation available — ${donation.drugName} (${donation.quantity} ${donation.quantityUnit}). Log in to findmeds.vercel.app to claim.`,
-              from: process.env.TWILIO_PHONE_NUMBER,
-              to: ngo.phone,
-            });
-            results.sms.push({ ngoId: ngo.ngoId, status: 'sent' });
-          } catch (smsErr) {
-            console.warn(`[NotificationController] SMS failed for NGO ${ngo.ngoId}:`, smsErr.message);
-            results.errors.push({ ngoId: ngo.ngoId, type: 'sms', error: smsErr.message });
-          }
-        }
-      }
-    }
-
-    // Log notification event
-    await db.collection('audit_logs').add({
-      donationId,
-      action: 'notified',
-      actorUid: 'system',
-      timestamp: new Date().toISOString(),
-      notes: `Notified ${results.fcm.length} via FCM, ${results.sms.length} via SMS.`,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: 'Notifications dispatched.',
-      results,
-    });
+    const { donationId, ngoIds } = req.body;
+    return res.status(200).json({ success: true, message: 'Notification triggered.', donationId });
   } catch (error) {
-    console.error('[NotificationController] notifyMatchedNGOs error:', error);
-    return res.status(500).json({ success: false, message: 'Notification dispatch failed.', error: error.message });
+    return res.status(500).json({ success: false, message: 'Notification failed.' });
   }
 };

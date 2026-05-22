@@ -1,118 +1,117 @@
 // controllers/authController.js
-// Handles user registration (sets custom role claim) and profile fetch.
-// Login itself happens on the frontend via Firebase Auth SDK —
-// we only need the backend for setting the role custom claim.
+// Handles register and login with bcrypt + JWT.
+// No Firebase — fully custom auth as per the new roadmap.
 
-import { auth, db } from '../config/firebase.js';
+import jwt from 'jsonwebtoken';
+import User from '../models/User.js';
+import NGO from '../models/NGO.js';
+
+const signToken = (user) =>
+  jwt.sign(
+    { id: user._id, role: user.role, email: user.email },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+  );
 
 // POST /api/auth/register
-// Called after frontend Firebase signup to store user profile + set role claim
-export const registerUser = async (req, res) => {
+export const register = async (req, res) => {
   try {
-    const { uid, fullName, email, role, pincode, darpanId } = req.body;
+    const { name, email, password, role, pincode, darpanId, phone } = req.body;
 
-    // Validate role
+    if (!name || !email || !password || !role) {
+      return res.status(400).json({ success: false, message: 'name, email, password and role are required.' });
+    }
+
     const validRoles = ['donor', 'ngo', 'admin'];
     if (!validRoles.includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid role. Must be one of: ${validRoles.join(', ')}`,
-      });
+      return res.status(400).json({ success: false, message: `role must be one of: ${validRoles.join(', ')}` });
     }
 
-    // Set custom claim on Firebase Auth token (used in verifyToken middleware)
-    await auth.setCustomUserClaims(uid, { role });
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+    }
 
-    // Build the Firestore user document
-    const userDoc = {
-      uid,
-      fullName,
+    // Check duplicate email
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'Email already registered.' });
+    }
+
+    // Create user — passwordHash field triggers bcrypt pre-save hook
+    const user = await User.create({
+      name,
       email,
+      passwordHash: password, // gets hashed in model pre-save
       role,
       pincode: pincode || null,
-      totalDonations: 0,
-      createdAt: new Date().toISOString(),
-    };
+    });
 
-    // Save to /users collection
-    await db.collection('users').doc(uid).set(userDoc);
-
-    // If the user is an NGO, also create an NGO document (for Member 3's schema)
+    // If NGO, create NGO document too
     if (role === 'ngo') {
-      await db.collection('ngos').doc(uid).set({
-        ngoId: uid,
-        name: fullName,
+      await NGO.create({
+        userId: user._id,
+        name,
         email,
         darpanId: darpanId || null,
-        verified: false, // Admin must verify
-        location: null,
-        geoHash: null,
-        wishlist: [],
-        coldChain: false,
-        reliabilityScore: 0,
-        pickupsCompleted: 0,
-        fcmToken: null,
-        phone: null,
-        createdAt: new Date().toISOString(),
+        phone: phone || null,
+        verified: false,
       });
     }
+
+    const token = signToken(user);
 
     return res.status(201).json({
       success: true,
-      message: 'User registered successfully.',
-      user: userDoc,
+      message: 'Registration successful.',
+      token,
+      user: user.toJSON(),
     });
   } catch (error) {
-    console.error('[AuthController] registerUser error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Registration failed. Please try again.',
-      error: error.message,
+    console.error('[AuthController] register error:', error);
+    return res.status(500).json({ success: false, message: 'Registration failed.', error: error.message });
+  }
+};
+
+// POST /api/auth/login
+export const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email and password are required.' });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+    }
+
+    const token = signToken(user);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Login successful.',
+      token,
+      user: user.toJSON(),
     });
+  } catch (error) {
+    console.error('[AuthController] login error:', error);
+    return res.status(500).json({ success: false, message: 'Login failed.', error: error.message });
   }
 };
 
 // GET /api/auth/me  (protected)
-// Returns the logged-in user's profile from Firestore
-export const getMyProfile = async (req, res) => {
+export const getMe = async (req, res) => {
   try {
-    const userSnap = await db.collection('users').doc(req.user.uid).get();
-
-    if (!userSnap.exists) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    return res.status(200).json({
-      success: true,
-      user: userSnap.data(),
-    });
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+    return res.status(200).json({ success: true, user: user.toJSON() });
   } catch (error) {
-    console.error('[AuthController] getMyProfile error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch profile.' });
-  }
-};
-
-// POST /api/auth/fcm-token  (protected)
-// Saves the device FCM push token to the user/NGO document
-export const saveFcmToken = async (req, res) => {
-  try {
-    const { fcmToken } = req.body;
-    const { uid, role } = req.user;
-
-    if (!fcmToken) {
-      return res.status(400).json({ success: false, message: 'fcmToken is required.' });
-    }
-
-    await db.collection('users').doc(uid).update({ fcmToken });
-
-    // Also update in ngos collection if the user is an NGO
-    if (role === 'ngo') {
-      await db.collection('ngos').doc(uid).update({ fcmToken });
-    }
-
-    return res.status(200).json({ success: true, message: 'FCM token saved.' });
-  } catch (error) {
-    console.error('[AuthController] saveFcmToken error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to save FCM token.' });
   }
 };
