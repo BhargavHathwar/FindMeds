@@ -1,8 +1,9 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, Menu, X } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { Logo } from './Logo';
 
 const navigation = [
   { name: 'Home', href: '/' },
@@ -20,13 +21,8 @@ export function Navbar() {
     <header className="fixed inset-x-0 top-0 z-50 glass-morphism">
       <nav className="mx-auto flex max-w-7xl items-center justify-between p-6 lg:px-8" aria-label="Global">
         <div className="flex lg:flex-1">
-          <Link to="/" className="-m-1.5 p-1.5 flex items-center gap-2">
-            <div className="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/20">
-              <Activity className="h-6 w-6 text-white" />
-            </div>
-            <span className="text-xl font-display font-bold tracking-tight text-brand-secondary">
-              FindMeds<span className="text-brand-primary">.</span>
-            </span>
+          <Link to="/" className="-m-1.5 p-1.5 flex items-center">
+            <Logo size="sm" />
           </Link>
         </div>
         
@@ -75,9 +71,8 @@ export function Navbar() {
             className="fixed inset-0 z-50 bg-white px-6 py-6 lg:hidden"
           >
             <div className="flex items-center justify-between">
-              <Link to="/" className="-m-1.5 p-1.5 flex items-center gap-2">
-                <Activity className="h-8 w-8 text-brand-primary" />
-                <span className="text-xl font-display font-bold text-brand-secondary">FindMeds</span>
+              <Link to="/" className="-m-1.5 p-1.5 flex items-center" onClick={() => setMobileMenuOpen(false)}>
+                <Logo size="sm" />
               </Link>
               <button
                 type="button"

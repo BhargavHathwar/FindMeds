@@ -444,7 +444,7 @@ export function NGODashboard() {
             <div className="lg:col-span-2 clinical-card overflow-hidden h-[450px]">
               <MapContainer center={[13.0827, 80.2707]} zoom={12} style={{ height: "100%", width: "100%" }}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                {defaultDonors.map(donor => (
+                {defaultDonors.filter(donor => donor && typeof donor.lat === 'number' && typeof donor.lng === 'number' && !isNaN(donor.lat) && !isNaN(donor.lng)).map(donor => (
                   <Marker key={donor.id} position={[donor.lat, donor.lng]}>
                     <Popup>
                       <div className="p-1">

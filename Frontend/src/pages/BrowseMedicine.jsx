@@ -30,10 +30,10 @@ L.Marker.prototype.options.icon = DefaultIcon;
 import { api } from '../lib/api';
 
 const defaultSampleMeds = [
-  { id: '1', name: 'Amoxicillin 500mg', category: 'Antibiotics', ngo: 'Helping Hands NGO', distance: '0.8 miles', expiry: '2024-11-20', qty: 45, quantity: 45, lat: 41.8781, lng: -87.6298, status: 'Active' },
-  { id: '2', name: 'Metformin 850mg', category: 'Diabetes', ngo: 'St. Jude Relief', distance: '2.4 miles', expiry: '2024-09-15', qty: 120, quantity: 120, lat: 41.8819, lng: -87.6231, status: 'Active' },
-  { id: '3', name: 'Lisinopril 10mg', category: 'Hypertension', ngo: 'City Health Surplus', distance: '5.1 miles', expiry: '2025-01-10', qty: 15, quantity: 15, lat: 41.8850, lng: -87.6350, status: 'Active' },
-  { id: '4', name: 'Albuterol Inhaler', category: 'Respiratory', ngo: 'Helping Hands NGO', distance: '0.8 miles', expiry: '2024-08-05', qty: 3, quantity: 3, lat: 41.8781, lng: -87.6298, status: 'Active' },
+  { id: '1', name: 'Amoxicillin 500mg', category: 'Antibiotics', ngo: 'Helping Hands NGO', distance: '0.8 miles', expiry: '2024-11-20', qty: '45 Packs', quantity: 45, quantityUnit: 'Packs', lat: 41.8781, lng: -87.6298, status: 'Active' },
+  { id: '2', name: 'Metformin 850mg', category: 'Diabetes', ngo: 'St. Jude Relief', distance: '2.4 miles', expiry: '2024-09-15', qty: '120 Tablets', quantity: 120, quantityUnit: 'Tablets', lat: 41.8819, lng: -87.6231, status: 'Active' },
+  { id: '3', name: 'Lisinopril 10mg', category: 'Hypertension', ngo: 'City Health Surplus', distance: '5.1 miles', expiry: '2025-01-10', qty: '15 Strips', quantity: 15, quantityUnit: 'Strips', lat: 41.8850, lng: -87.6350, status: 'Active' },
+  { id: '4', name: 'Albuterol Inhaler', category: 'Respiratory', ngo: 'Helping Hands NGO', distance: '0.8 miles', expiry: '2024-08-05', qty: '3 Inhalers', quantity: 3, quantityUnit: 'Inhalers', lat: 41.8781, lng: -87.6298, status: 'Active' },
 ];
 
 const categories = ['All', 'Antibiotics', 'Diabetes', 'Hypertension', 'Respiratory', 'Pain Relief'];
@@ -237,7 +237,14 @@ export function BrowseMedicine() {
                   </div>
                   <div className="mt-auto flex items-center justify-between pt-4 border-t border-slate-100">
                     <div className="text-sm font-bold text-brand-secondary">
-                      {med.qty || `${med.quantity} ${med.quantityUnit}`}
+                      {(() => {
+                        if (typeof med.qty === 'string' && isNaN(Number(med.qty))) {
+                          return med.qty;
+                        }
+                        const num = med.qty || med.quantity || 0;
+                        const unit = med.quantityUnit || 'units';
+                        return `${num} ${unit}`;
+                      })()}
                     </div>
                     
                     {med.status === 'Claimed' ? (
@@ -275,15 +282,24 @@ export function BrowseMedicine() {
             <div className="clinical-card h-[600px] overflow-hidden">
               <MapContainer center={[41.8781, -87.6298]} zoom={13} style={{ height: '100%', width: '100%' }}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                {filteredMeds.map(med => (
+                {filteredMeds.filter(med => med && typeof med.lat === 'number' && typeof med.lng === 'number' && !isNaN(med.lat) && !isNaN(med.lng)).map(med => (
                   <Marker key={med.id} position={[med.lat, med.lng]}>
                     <Popup>
                       <div className="p-2 min-w-[150px]">
                         <h4 className="font-bold text-brand-secondary mb-1">{med.name}</h4>
                         <p className="text-xs text-slate-500 mb-2">{med.ngo}</p>
                         <div className="flex justify-between items-center text-[10px] font-bold text-brand-primary uppercase">
-                          <span>{med.qty} Units</span>
-                          <span className="text-slate-400">{med.distance}</span>
+                          <span>
+                            {(() => {
+                              if (typeof med.qty === 'string' && isNaN(Number(med.qty))) {
+                                return med.qty;
+                              }
+                              const num = med.qty || med.quantity || 0;
+                              const unit = med.quantityUnit || 'Units';
+                              return `${num} ${unit}`;
+                            })()}
+                          </span>
+                          <span className="text-slate-400">{med.distance || '0.5 miles'}</span>
                         </div>
                       </div>
                     </Popup>

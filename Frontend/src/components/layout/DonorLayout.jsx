@@ -4,6 +4,22 @@ import { DonorSidebar } from '../donor/DonorSidebar';
 import { Bell, Search, User } from 'lucide-react';
 
 export function DonorLayout() {
+  const [profile, setProfile] = React.useState({ fullName: 'Metropolis Pharma', role: 'Premium Donor' });
+
+  React.useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('findmeds_profile'));
+      if (stored) {
+        setProfile({
+          fullName: stored.fullName || 'Metropolis Pharma',
+          role: stored.role === 'donor' ? 'Premium Donor' : (stored.role || 'Premium Donor')
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   return (
     <div className="min-h-[calc(100vh-80px)] bg-slate-50 flex">
       <DonorSidebar />
@@ -28,8 +44,8 @@ export function DonorLayout() {
             <div className="h-8 w-px bg-slate-200 mx-2"></div>
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
-                <div className="text-sm font-bold text-brand-secondary">Metropolis Pharma</div>
-                <div className="text-[10px] font-bold text-brand-primary uppercase tracking-wider">Premium Donor</div>
+                <div className="text-sm font-bold text-brand-secondary">{profile.fullName}</div>
+                <div className="text-[10px] font-bold text-brand-primary uppercase tracking-wider">{profile.role === 'donor' || profile.role === 'Premium Donor' ? 'Premium Donor' : profile.role}</div>
               </div>
               <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 border-2 border-white shadow-sm overflow-hidden">
                 <img src="https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=100&h=100" alt="Avatar" className="w-full h-full object-cover" />

@@ -20,6 +20,57 @@ export function DonorProfile() {
     location: 'Central Avenue, NY 10001',
     bio: 'Pioneering healthcare excellence through surplus management.',
   });
+  const [saveSuccess, setSaveSuccess] = React.useState(false);
+
+  React.useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('findmeds_profile'));
+      if (stored) {
+        setProfile({
+          name: stored.fullName || 'Metropolis Hospital Group',
+          email: stored.email || 'donor@example.com',
+          location: stored.location || (stored.pincode ? `Pincode: ${stored.pincode}` : 'Central Avenue, NY 10001'),
+          bio: stored.bio || 'Pioneering healthcare excellence through surplus management.',
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const handleSaveChanges = (e) => {
+    e.preventDefault();
+    try {
+      const stored = JSON.parse(localStorage.getItem('findmeds_profile')) || {};
+      const updated = {
+        ...stored,
+        fullName: profile.name,
+        location: profile.location,
+        bio: profile.bio
+      };
+      localStorage.setItem('findmeds_profile', JSON.stringify(updated));
+      
+      // Also update matching fallback database entry so it is persisted for future logins!
+      const fallbackDb = JSON.parse(localStorage.getItem('fm_users_db')) || [];
+      const userIndex = fallbackDb.findIndex(u => u.email.toLowerCase() === profile.email.toLowerCase());
+      if (userIndex !== -1) {
+        fallbackDb[userIndex] = {
+          ...fallbackDb[userIndex],
+          fullName: profile.name,
+          pincode: profile.location.replace(/pincode:\s*/i, '').trim() || fallbackDb[userIndex].pincode
+        };
+        localStorage.setItem('fm_users_db', JSON.stringify(fallbackDb));
+      }
+
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+        window.location.reload();
+      }, 1500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const stats = [
     { label: 'Lives Impacted', value: '14,200', icon: Heart, color: 'text-red-500', bg: 'bg-red-50' },
@@ -58,7 +109,13 @@ export function DonorProfile() {
             <h3 className="text-lg font-bold text-brand-secondary mb-6 flex items-center gap-2">
               <User className="text-brand-primary" /> Personal Information
             </h3>
-            <form className="space-y-6">
+            <form onSubmit={handleSaveChanges} className="space-y-6">
+              {saveSuccess && (
+                <div id="save-success-banner" className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-4 flex items-center gap-2 text-sm font-medium">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                  Your profile changes have been saved successfully and synced with the active database!
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Display Name</label>
@@ -92,8 +149,8 @@ export function DonorProfile() {
                 </div>
               </div>
               <button
-                type="button"
-                className="flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-xl font-bold shadow-lg shadow-teal-500/20 hover:bg-teal-700 transition-all"
+                type="submit"
+                className="flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-xl font-bold shadow-lg shadow-teal-500/20 hover:bg-teal-700 transition-all cursor-pointer"
               >
                 <Save className="w-5 h-5" />
                 Save Changes

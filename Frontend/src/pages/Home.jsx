@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { ChevronRight, ShieldCheck, HeartPulse, Recycle, Globe, BarChart3, Pill, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { LottieAnimation } from '../components/layout/LottieAnimation';
 
 const fadeIn = {
   initial: { opacity: 0, y: 20 },
@@ -88,54 +89,13 @@ export function Home() {
             </motion.div>
             
             <motion.div 
-              initial={{ opacity: 0, scale: 0.8 }}
+              initial={{ opacity: 0, scale: 0.95 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               className="mt-16 lg:mt-0 relative"
             >
-              <div className="relative rounded-3xl overflow-hidden shadow-2xl border-8 border-white">
-                <img 
-                  src="https://images.unsplash.com/photo-1576091160550-217359f4ecf8?auto=format&fit=crop&q=80&w=2070" 
-                  alt="Clinical professionals working" 
-                  className="w-full h-[500px] object-cover"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-brand-secondary/40 to-transparent"></div>
-              </div>
-              
-              {/* Floating elements */}
-              <motion.div 
-                animate={{ y: [0, -10, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute -bottom-8 -left-8 bg-white p-6 rounded-2xl shadow-xl border border-slate-100 max-w-xs"
-              >
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-                    <ShieldCheck className="h-6 w-6 text-brand-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-slate-900">Certified Surplus</h4>
-                    <p className="text-xs text-slate-500 font-medium">Batch #992-AX Verified</p>
-                  </div>
-                </div>
-                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full w-3/4 bg-brand-primary rounded-full"></div>
-                </div>
-              </motion.div>
-
-              <motion.div 
-                animate={{ y: [0, 10, 0] }}
-                transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute -top-8 -right-8 bg-brand-secondary p-5 rounded-2xl shadow-xl text-white max-w-[180px]"
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
-                  <span className="text-xs font-bold uppercase tracking-tighter">Live Impact</span>
-                </div>
-                <div className="text-2xl font-bold font-display">$1.2M</div>
-                <p className="text-[10px] text-slate-400 font-medium leading-tight mt-1">Medication distributed in current quarter</p>
-              </motion.div>
+              <LottieAnimation />
             </motion.div>
           </div>
         </div>
@@ -194,6 +154,8 @@ export function Home() {
               </div>
             ))}
           </div>
+
+
         </div>
       </section>
 

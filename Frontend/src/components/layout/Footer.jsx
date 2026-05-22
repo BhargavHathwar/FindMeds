@@ -1,5 +1,6 @@
-import { Activity, Mail, Phone, MapPin, Twitter, Linkedin, Facebook } from 'lucide-react';
+import { Mail, Phone, MapPin, Twitter, Linkedin, Facebook } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Logo } from './Logo';
 
 export function Footer() {
   return (
@@ -7,11 +8,8 @@ export function Footer() {
       <div className="mx-auto max-w-7xl px-6 py-12 lg:px-8">
         <div className="xl:grid xl:grid-cols-3 xl:gap-8">
           <div className="space-y-8">
-            <div className="flex items-center gap-2">
-              <Activity className="h-8 w-8 text-brand-primary" />
-              <span className="text-2xl font-display font-bold text-white tracking-tight">
-                FindMeds<span className="text-brand-primary">.</span>
-              </span>
+            <div className="flex items-center">
+              <Logo size="sm" />
             </div>
             <p className="text-sm leading-6 text-slate-400 max-w-xs">
               Bridging the gap in healthcare through secure, transparent medicine donation and intelligent redistribution.
@@ -55,7 +53,7 @@ export function Footer() {
                 <ul role="list" className="mt-6 space-y-4">
                   <li className="flex items-center gap-3 text-sm text-slate-400">
                     <Mail className="h-4 w-4 text-brand-primary" />
-                    contact@findmeds.org
+                    findmeds5@gmail.com
                   </li>
                   <li className="flex items-center gap-3 text-sm text-slate-400">
                     <Phone className="h-4 w-4 text-brand-primary" />
@@ -63,7 +61,7 @@ export function Footer() {
                   </li>
                   <li className="flex items-center gap-3 text-sm text-slate-400">
                     <MapPin className="h-4 w-4 text-brand-primary" />
-                    Medical District, Chicago, IL
+                    Bangalore, India
                   </li>
                 </ul>
               </div>

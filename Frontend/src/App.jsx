@@ -7,6 +7,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
+import { CursorGlow } from './components/layout/CursorGlow';
 import { Home } from './pages/Home';
 import { DonorDashboard } from './pages/DonorDashboard';
 import { NGODashboard } from './pages/NGODashboard';
@@ -44,6 +45,7 @@ export default function App() {
   return (
     <Router>
       <ScrollToHash />
+      <CursorGlow />
       <div className="flex min-h-screen flex-col">
         <Navbar />
         <main className="flex-grow pt-20">

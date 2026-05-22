@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, User, Landmark, ShieldCheck, Activity, Mail, Lock, ArrowRight, MapPin, Database } from 'lucide-react';
+import { Shield, User, Landmark, ShieldCheck, Mail, Lock, ArrowRight, MapPin, Database } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Logo } from '../components/layout/Logo';
 import { cn } from '../lib/utils';
 import { api, getApiBaseUrl, setApiBaseUrl, isBackendConnected, DEFAULT_API_BASE } from '../lib/api';
 
@@ -95,7 +96,8 @@ export function Auth() {
       navigate(targetPath);
     } catch (err) {
       console.error(err);
-      setApiError('Authentication failed. Check your connection or credentials.');
+      const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Authentication failed. Check your connection or credentials.';
+      setApiError(errMsg);
     } finally {
       setIsLoading(false);
     }
@@ -111,7 +113,8 @@ export function Auth() {
       navigate(registrationFormRole.target);
     } catch (err) {
       console.error(err);
-      setApiError('Registration failed. Check backend service status.');
+      const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Registration failed. Check backend service status.';
+      setApiError(errMsg);
     } finally {
       setIsLoading(false);
     }
@@ -129,13 +132,9 @@ export function Auth() {
     <div className="min-h-[calc(100vh-80px)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-50">
       <div className={cn("w-full transition-all duration-500", (isLogin || registrationFormRole) ? "max-w-md" : "max-w-4xl")}>
         <div className="text-center mb-10">
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="inline-flex items-center justify-center p-3 bg-brand-primary rounded-2xl shadow-lg mb-6"
-          >
-            <Activity className="h-8 w-8 text-white" />
-          </motion.div>
+          <div className="inline-flex items-center justify-center mb-6">
+            <Logo size="md" showText={false} />
+          </div>
           <h2 
             onClick={() => {
               if (isLogin) {
@@ -176,10 +175,10 @@ export function Auth() {
               )}
 
               <form onSubmit={handleLoginSubmit} className="space-y-6">
-                <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl mb-6">
-                  <div className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2 flex items-center justify-between">
-                    <span>Demo Credentials</span>
-                    {devModeClicks >= 5 && (
+                {devModeClicks >= 5 && (
+                  <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl mb-6">
+                    <div className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2 flex items-center justify-between">
+                      <span>Demo Credentials</span>
                       <button 
                         type="button"
                         onClick={() => setShowApiSettings(!showApiSettings)}
@@ -187,15 +186,15 @@ export function Auth() {
                       >
                         Configure API
                       </button>
-                    )}
+                    </div>
+                    <div className="text-xs text-blue-600 space-y-1">
+                      <div>Donor: <span className="font-bold">donor@example.com</span></div>
+                      <div>NGO: <span className="font-bold font-mono">ngo@lifecare.org</span></div>
+                      <div>Admin: <span className="font-bold">admin@findmeds.org</span></div>
+                      <div className="text-[10px] text-slate-400 font-mono mt-1 pt-1 border-t border-blue-100">Password is any value.</div>
+                    </div>
                   </div>
-                  <div className="text-xs text-blue-600 space-y-1">
-                    <div>Donor: <span className="font-bold">donor@example.com</span></div>
-                    <div>NGO: <span className="font-bold font-mono">ngo@lifecare.org</span></div>
-                    <div>Admin: <span className="font-bold">admin@findmeds.org</span></div>
-                    <div className="text-[10px] text-slate-400 font-mono mt-1 pt-1 border-t border-blue-100">Password is any value.</div>
-                  </div>
-                </div>
+                )}
 
                 {showApiSettings && (
                   <div className="bg-slate-900 text-white p-4 rounded-xl space-y-3 mb-4 text-xs">
