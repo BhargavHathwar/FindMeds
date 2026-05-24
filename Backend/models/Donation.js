@@ -14,21 +14,26 @@ const donationSchema = new mongoose.Schema(
     quantityUnit: { type: String, default: 'Units' },
     photoUrl: { type: String, default: null },
     pincode: { type: String, default: null },
-    // GeoJSON Point — enables $nearSphere matching
+    
+    // GeoJSON Point — enables high-speed $geoNear or $nearSphere matching queries
     location: {
       type: { type: String, enum: ['Point'], default: 'Point' },
-      coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
+      coordinates: { type: [Number], default: [0, 0] }, // [longitude, latitude]
     },
+    
     coldChain: { type: Boolean, default: false },
     originalSeal: { type: Boolean, default: false },
     noWaterDamage: { type: Boolean, default: false },
     sterilePackaging: { type: Boolean, default: false },
     description: { type: String, default: null },
+    
     status: {
       type: String,
-      enum: ['available', 'claimed', 'cancelled', 'auto_expired'],
+      // Expanded the enum array pool to safely include 'expired' matching fields
+      enum: ['available', 'claimed', 'cancelled', 'auto_expired', 'expired'],
       default: 'available',
     },
+    
     claimedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'NGO', default: null },
     claimedAt: { type: Date, default: null },
     notifiedAt: { type: Date, default: null },
@@ -37,9 +42,15 @@ const donationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Indexes for fast queries
+// ==============================================================================
+// 🏷️ CLOUD PERFORMANCE INDEX RULES
+// ==============================================================================
+// Enables high-performance native spatial processing algorithms
 donationSchema.index({ location: '2dsphere' });
 donationSchema.index({ status: 1 });
 donationSchema.index({ donorId: 1 });
+
+// Compiles a compound text search layer over drugName for high-speed custom dashboard filtering
+donationSchema.index({ drugName: 'text' });
 
 export default mongoose.model('Donation', donationSchema);

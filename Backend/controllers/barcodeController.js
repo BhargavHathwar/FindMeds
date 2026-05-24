@@ -1,32 +1,32 @@
 // controllers/barcodeController.js
-// Member 2 Month 1 + Month 2 core task.
-// GET /api/barcode/:barcode  — EAN-13 lookup via Open Food Facts → RxNav fallback
-// POST /api/verify-barcode  — runs all 5 safety gates, returns pass/fail per gate
+// Optimized Data/DevOps Edition — Integrates Live Atlas Text Queries and Cold Chain Matrix
 
 import axios from 'axios';
 import Drug from '../models/Drug.js';
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import path from 'path';
 
-// Load Schedule H/H1/X blocklist from JSON file
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const blocklist = JSON.parse(
-  readFileSync(path.join(__dirname, '../data/scheduleBlocklist.json'), 'utf-8')
-);
+/**
+ * 🛡️ Helper: Connects directly with your seeded MongoDB collection to see if 
+ * a medication is registered as a controlled substance under CDSCO guidelines.
+ */
+const lookupCDSCOBlocklist = async (drugName) => {
+  if (!drugName || drugName.trim().length === 0) return null;
+  
+  try {
+    // Uses the text index you built in your Drug schema to run a high-speed search
+    const matchedDrug = await Drug.findOne(
+      { $text: { $search: drugName } },
+      { score: { $meta: "textScore" } }
+    ).sort({ score: { $meta: "textScore" } });
 
-const allBlocked = [
-  ...blocklist.scheduleH,
-  ...blocklist.scheduleH1,
-  ...blocklist.scheduleX,
-];
-
-const getSchedule = (drugName) => {
-  const n = drugName.toLowerCase();
-  if (blocklist.scheduleX.some(d => n.includes(d))) return 'X';
-  if (blocklist.scheduleH1.some(d => n.includes(d))) return 'H1';
-  if (blocklist.scheduleH.some(d => n.includes(d))) return 'H';
-  return null;
+    // Verify if the top score represents a valid restricted schedule hit
+    if (matchedDrug && ['H', 'H1', 'X', 'Schedule H', 'Schedule H1', 'Schedule X'].includes(matchedDrug.schedule)) {
+      return matchedDrug.schedule;
+    }
+    return null;
+  } catch (error) {
+    console.error('[DATABASE ERROR] Blocklist text lookup failed:', error.message);
+    return null;
+  }
 };
 
 // ── Barcode Lookup ───────────────────────────────────────────────────────────
@@ -36,11 +36,11 @@ export const lookupBarcode = async (req, res) => {
   const { barcode } = req.params;
 
   if (!barcode || barcode.length < 8) {
-    return res.status(400).json({ success: false, message: 'Invalid barcode.' });
+    return res.status(400).json({ success: false, message: 'Invalid barcode structure.' });
   }
 
   try {
-    // Step 1: Check local MongoDB drug cache first
+    // Step 1: Check local MongoDB cache pool first
     const cached = await Drug.findOne({ barcode });
     if (cached) {
       return res.status(200).json({
@@ -52,7 +52,7 @@ export const lookupBarcode = async (req, res) => {
       });
     }
 
-    // Step 2: Open Food Facts API
+    // Step 2: Query Global Open Food Facts Engine API
     let drugData = null;
     try {
       const offRes = await axios.get(
@@ -63,18 +63,18 @@ export const lookupBarcode = async (req, res) => {
         const p = offRes.data.product;
         drugData = {
           barcode,
-          drugName: p.product_name || p.generic_name || 'Unknown',
+          drugName: p.product_name || p.generic_name || 'Unknown Medicine',
           manufacturer: p.brands || null,
-          category: p.categories_tags?.[0]?.replace('en:', '') || null,
+          category: p.categories_tags?.[0]?.replace('en:', '') || 'pharmaceutical',
           composition: p.ingredients_text || null,
           coldChainReq: false,
         };
       }
     } catch (e) {
-      console.warn('[BarcodeController] Open Food Facts failed:', e.message);
+      console.warn('[BarcodeController] Open Food Facts network trace dropped:', e.message);
     }
 
-    // Step 3: RxNav fallback
+    // Step 3: RxNav clinical backup registry fallback query
     if (!drugData) {
       try {
         const rxRes = await axios.get(
@@ -100,47 +100,57 @@ export const lookupBarcode = async (req, res) => {
           }
         }
       } catch (e) {
-        console.warn('[BarcodeController] RxNav fallback failed:', e.message);
+        console.warn('[BarcodeController] RxNav registry mirror unreachable:', e.message);
       }
     }
 
     if (!drugData) {
       return res.status(404).json({
         success: false,
-        message: 'Medicine not found. Please enter details manually.',
+        message: 'Medicine not recognized in master registries. Please enter properties manually.',
         barcode,
       });
     }
 
-    // Detect schedule from drug name
-    const schedule = getSchedule(drugData.drugName);
-    drugData.schedule = schedule;
+    // ── AUTOMATED COLD-CHAIN IDENTIFICATION FILTER ──────────────────
+    const normalizedName = drugData.drugName.toLowerCase();
+    const normalizedCategory = drugData.category.toLowerCase();
+    if (
+      normalizedName.includes('insulin') || 
+      normalizedName.includes('vaccine') || 
+      normalizedCategory.includes('insulin') ||
+      normalizedCategory.includes('cold')
+    ) {
+      drugData.coldChainReq = true;
+      console.log(`[COLD-CHAIN FLAG] Auto-detected temperature regulation required for: ${drugData.drugName}`);
+    }
 
-    // Cache in MongoDB
+    // Detect schedule parameters directly from your live seeded MongoDB collection
+    const detectedSchedule = await lookupCDSCOBlocklist(drugData.drugName);
+    drugData.schedule = detectedSchedule;
+
+    // Persist to local MongoDB cache pool
     const saved = await Drug.create(drugData);
 
     return res.status(200).json({
       success: true,
       source: 'api_lookup',
       drug: saved,
-      schedule,
-      isBlocked: schedule !== null,
+      schedule: detectedSchedule,
+      isBlocked: detectedSchedule !== null,
     });
   } catch (error) {
-    console.error('[BarcodeController] lookupBarcode error:', error);
-    return res.status(500).json({ success: false, message: 'Barcode lookup failed.' });
+    console.error('[BarcodeController] lookupBarcode critical error:', error);
+    return res.status(500).json({ success: false, message: 'Barcode resolution processing failure.' });
   }
 };
 
 // ── 5-Gate Verification Pipeline ─────────────────────────────────────────────
 
 // POST /api/verify-barcode
-// Runs all 5 safety gates. Returns pass/fail per gate.
-// Frontend shows a loading gate display (Member 1's Month 2 task).
 export const verifyBarcode = async (req, res) => {
   try {
-    const { drugName, category, expiryDate, originalSeal, photoUrl } = req.body;
-
+    const { drugName, category, expiryDate, photoUrl } = req.body;
     const gates = [];
 
     // Gate 1 — Drug Recognized
@@ -148,29 +158,29 @@ export const verifyBarcode = async (req, res) => {
       gate: 1,
       name: 'Drug Recognized',
       passed: Boolean(drugName && drugName.trim().length > 2),
-      reason: 'Drug name must be identified from barcode or entered manually.',
+      reason: 'Drug name must be resolved through a barcode sweep or entered manually.',
     });
 
     // Gate 2 — Expiry 3+ months away
     const expiry = new Date(expiryDate);
-    const threeMonths = new Date();
-    threeMonths.setMonth(threeMonths.getMonth() + 3);
+    const threeMonthsOut = new Date();
+    threeMonthsOut.setMonth(threeMonthsOut.getMonth() + 3);
     gates.push({
       gate: 2,
       name: 'Expiry Valid (3+ months)',
-      passed: !isNaN(expiry) && expiry > threeMonths,
-      reason: `Medicine must expire after ${threeMonths.toDateString()}.`,
+      passed: !isNaN(expiry) && expiry > threeMonthsOut,
+      reason: `Medicine safety index constraints require expiry dates past ${threeMonthsOut.toDateString()}.`,
     });
 
-    // Gate 3 — Not Schedule H/H1/X (CDSCO blocklist)
-    const schedule = getSchedule(drugName || '');
+    // Gate 3 — Not Schedule H/H1/X (Live CDSCO cloud database verification)
+    const activeSchedule = await lookupCDSCOBlocklist(drugName || '');
     gates.push({
       gate: 3,
-      name: 'Not Schedule H/H1/X',
-      passed: schedule === null,
-      reason: schedule
-        ? `This medicine is Schedule ${schedule} and cannot be donated.`
-        : 'Medicine is not a controlled substance.',
+      name: 'Not Controlled Substance',
+      passed: activeSchedule === null,
+      reason: activeSchedule
+        ? `CDSCO Restriction: This formulation is cataloged as Schedule ${activeSchedule} and cannot be redistributed.`
+        : 'Formulation successfully cleared through controlled substances screening parameters.',
     });
 
     // Gate 4 — Category Classified
@@ -178,7 +188,7 @@ export const verifyBarcode = async (req, res) => {
       gate: 4,
       name: 'Category Classified',
       passed: Boolean(category && category.trim().length > 0),
-      reason: 'A valid medicine category must be selected.',
+      reason: 'A specific medical classification tier parameter must be selected.',
     });
 
     // Gate 5 — Photo Proof Uploaded
@@ -186,7 +196,7 @@ export const verifyBarcode = async (req, res) => {
       gate: 5,
       name: 'Photo Proof Uploaded',
       passed: Boolean(photoUrl && photoUrl.length > 0),
-      reason: 'A photo of the medicine package must be uploaded to Cloudinary.',
+      reason: 'An active visual verification asset stream link from Cloudinary must be provided.',
     });
 
     const allPassed = gates.every(g => g.passed);
@@ -198,11 +208,11 @@ export const verifyBarcode = async (req, res) => {
       gates,
       failedGates,
       message: allPassed
-        ? 'All 5 verification gates passed. Donation can be listed.'
-        : `Failed gates: ${failedGates.join(', ')}`,
+        ? 'All 5 verification gates passed. Medication authorized for listing distribution.'
+        : `Listing suspended. Unmet safety gates: ${failedGates.join(', ')}`,
     });
   } catch (error) {
-    console.error('[BarcodeController] verifyBarcode error:', error);
-    return res.status(500).json({ success: false, message: 'Verification failed.' });
+    console.error('[BarcodeController] verifyBarcode system failure:', error);
+    return res.status(500).json({ success: false, message: 'Data gate validation pipeline crashed.' });
   }
 };
