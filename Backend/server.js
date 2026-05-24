@@ -90,6 +90,17 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ── Root Route ────────────────────────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Welcome to the FindMeds API Gateway',
+    version: '1.0.0',
+    status: 'online',
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/barcode', barcodeRoutes);
