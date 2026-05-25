@@ -377,5 +377,129 @@ export const api = {
   async getAdminStats() {
     const res = await requestWithFallback('GET', '/analytics/summary', null, true);
     return res.summary || res;
+  },
+
+  // Admin General Operations - Added for full Axios and state mapping
+  async getUsers() {
+    const res = await requestWithFallback('GET', '/admin/users', null, true, 'fm_users_db', []);
+    return res.data || res;
+  },
+
+  async toggleUserStatus(email) {
+    try {
+      const res = await axios.post(`${getApiBaseUrl()}/admin/users/toggle-status`, { email }, getAuthHeaders());
+      return res.data;
+    } catch (err) {
+      const users = JSON.parse(localStorage.getItem('fm_users_db')) || [];
+      const updated = users.map(u => {
+        if (u.email === email) {
+          const nextStatus = u.status === 'Active' ? 'Suspended' : 'Active';
+          return { ...u, status: nextStatus };
+        }
+        return u;
+      });
+      localStorage.setItem('fm_users_db', JSON.stringify(updated));
+      return { success: true, message: "User status updated offline." };
+    }
+  },
+
+  async updateUserRole(email, role) {
+    try {
+      const res = await axios.post(`${getApiBaseUrl()}/admin/users/update-role`, { email, role }, getAuthHeaders());
+      return res.data;
+    } catch (err) {
+      const users = JSON.parse(localStorage.getItem('fm_users_db')) || [];
+      const updated = users.map(u => {
+        if (u.email === email) {
+          return { ...u, role };
+        }
+        return u;
+      });
+      localStorage.setItem('fm_users_db', JSON.stringify(updated));
+      return { success: true, message: "User role updated offline." };
+    }
+  },
+
+  async getMedicineRequests() {
+    const res = await requestWithFallback('GET', '/requests/all', null, true, 'fm_requests', []);
+    return res.data || res;
+  },
+
+  async verifyMedicineRequest(reqId, approve) {
+    try {
+      const res = await axios.post(`${getApiBaseUrl()}/requests/verify/${reqId}`, { approve }, getAuthHeaders());
+      return res.data;
+    } catch (err) {
+      const requests = JSON.parse(localStorage.getItem('fm_requests')) || [];
+      const updated = requests.map(r => {
+        if (r.id === reqId) {
+          return { ...r, status: approve ? 'Verified' : 'Rejected' };
+        }
+        return r;
+      });
+      localStorage.setItem('fm_requests', JSON.stringify(updated));
+      return { success: true, message: "Request verification status updated offline." };
+    }
+  },
+
+  async verifyDonation(donId, approve) {
+    try {
+      const res = await axios.post(`${getApiBaseUrl()}/donations/verify/${donId}`, { approve }, getAuthHeaders());
+      return res.data;
+    } catch (err) {
+      const list = JSON.parse(localStorage.getItem('fm_donations')) || [];
+      const updated = list.map(d => {
+        if (d.id === donId) {
+          return { ...d, status: approve ? 'Active' : 'Rejected' };
+        }
+        return d;
+      });
+      localStorage.setItem('fm_donations', JSON.stringify(updated));
+      return { success: true, message: "Donation verification status updated offline." };
+    }
+  },
+
+  async getExclusions() {
+    const defaultExclusions = [
+      { id: 1, name: 'Standard Opioids & Codeine', reason: 'High Abuse Potential / Schedule H1 list', tier: 'Forbidden' },
+      { id: 2, name: 'Expired Vaccines', reason: 'Cold Chain Integrity Failure', tier: 'Safety Hazard' },
+      { id: 3, name: 'Controlled Substances / Amphetamines', reason: 'Regulated Government Schedule H list', tier: 'Verification Required' },
+    ];
+    let stored = localStorage.getItem('fm_exclusions');
+    if (!stored) {
+      localStorage.setItem('fm_exclusions', JSON.stringify(defaultExclusions));
+      stored = JSON.stringify(defaultExclusions);
+    }
+    const res = await requestWithFallback('GET', '/admin/exclusions', null, true, 'fm_exclusions', defaultExclusions);
+    return res.data || res;
+  },
+
+  async addExclusion(drugName, reasonStr, tier = 'Forbidden') {
+    const data = { name: drugName, reason: reasonStr, tier };
+    try {
+      const res = await axios.post(`${getApiBaseUrl()}/admin/exclusions`, data, getAuthHeaders());
+      return res.data;
+    } catch (err) {
+      const list = JSON.parse(localStorage.getItem('fm_exclusions')) || [];
+      const newBlock = { id: Date.now(), ...data };
+      list.push(newBlock);
+      localStorage.setItem('fm_exclusions', JSON.stringify(list));
+      return { success: true, message: "Exclusion added offline.", data: newBlock };
+    }
+  },
+
+  async getAuditLogs() {
+    const res = await requestWithFallback('GET', '/admin/audits', null, true, 'fm_audit_logs', []);
+    return res.data || res;
+  },
+
+  async clearAuditLogs() {
+    try {
+      const res = await axios.post(`${getApiBaseUrl()}/admin/audits/clear`, {}, getAuthHeaders());
+      return res.data;
+    } catch (err) {
+      localStorage.removeItem('fm_audit_logs');
+      return { success: true, message: "Audit logs cleared offline." };
+    }
   }
 };
