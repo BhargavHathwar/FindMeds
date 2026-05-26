@@ -161,13 +161,14 @@ export function AdminPortal() {
         api.getExclusions()
       ]);
 
-      setUsers(fetchedUsers);
-      setPendingNgos(fetchedNgos);
-      setAudits(fetchedAudits);
-      setRequests(fetchedRequests);
+      setUsers(Array.isArray(fetchedUsers) ? fetchedUsers : (fetchedUsers?.data || []));
+      setPendingNgos(Array.isArray(fetchedNgos) ? fetchedNgos : (fetchedNgos?.data || []));
+      setAudits(Array.isArray(fetchedAudits) ? fetchedAudits : (fetchedAudits?.data || []));
+      setRequests(Array.isArray(fetchedRequests) ? fetchedRequests : (fetchedRequests?.data || []));
 
       // Ensure that some have pending status to make it immediately testable
-      let donationsWithPendings = [...(fetchedDonations || [])];
+      const donationsArray = Array.isArray(fetchedDonations) ? fetchedDonations : (fetchedDonations?.data || []);
+      let donationsWithPendings = [...donationsArray];
       if (!donationsWithPendings.some(d => d.status === 'Pending Approval')) {
         donationsWithPendings.push(
           { id: 'DON-98433', date: '2026-05-24', medicine: 'Vildagliptin 50mg', qty: '40 Packs', quantityUnit: 'Packs', ngo: 'Pending', status: 'Pending Approval', batch: 'VD-1092', category: 'Diabetes', expiry: '2027-02', storageCondition: 'room', pincode: '400015', donor: 'Metropolis Hospital Group' },
@@ -176,7 +177,7 @@ export function AdminPortal() {
         localStorage.setItem('fm_donations', JSON.stringify(donationsWithPendings));
       }
       setDonations(donationsWithPendings);
-      setBlockedMeds(fetchedExclusions);
+      setBlockedMeds(Array.isArray(fetchedExclusions) ? fetchedExclusions : (fetchedExclusions?.data || []));
 
     } catch (err) {
       console.error("Error loading administrative datasets:", err);
@@ -407,31 +408,31 @@ export function AdminPortal() {
   ];
 
   // Filtering systems
-  const filteredNgos = pendingNgos.filter(n => 
+  const filteredNgos = (Array.isArray(pendingNgos) ? pendingNgos : []).filter(n => 
     (n.name || n.fullName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (n.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredRequests = requests.filter(r => {
+  const filteredRequests = (Array.isArray(requests) ? requests : []).filter(r => {
     const isSearchMatch = (r.medicine || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                            (r.ngo || '').toLowerCase().includes(searchQuery.toLowerCase());
     return isSearchMatch;
   });
 
-  const filteredDonations = donations.filter(d => {
+  const filteredDonations = (Array.isArray(donations) ? donations : []).filter(d => {
     const isSearchMatch = (d.medicine || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                            (d.donor || d.ngo || '').toLowerCase().includes(searchQuery.toLowerCase());
     return isSearchMatch;
   });
 
-  const filteredUsers = users.filter(u => {
+  const filteredUsers = (Array.isArray(users) ? users : []).filter(u => {
     const isSearchMatch = (u.fullName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                            (u.email || '').toLowerCase().includes(searchQuery.toLowerCase());
     const isRoleMatch = userRoleFilter === 'ALL' || u.role === userRoleFilter;
     return isSearchMatch && isRoleMatch;
   });
 
-  const filteredAudits = audits.filter(a => {
+  const filteredAudits = (Array.isArray(audits) ? audits : []).filter(a => {
     const isSearchMatch = (a.action || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                            (a.details || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                            (a.actor || '').toLowerCase().includes(searchQuery.toLowerCase());

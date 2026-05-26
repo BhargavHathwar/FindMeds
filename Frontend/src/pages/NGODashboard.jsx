@@ -74,6 +74,9 @@ export function NGODashboard() {
       const storedProfile = JSON.parse(localStorage.getItem('findmeds_profile')) || {};
       if (storedProfile.fullName) {
         setProfile(storedProfile);
+        if (storedProfile.wishlist && Array.isArray(storedProfile.wishlist)) {
+          setWishlist(storedProfile.wishlist);
+        }
       }
 
       const remoteMeds = await api.getDonations();
@@ -113,7 +116,7 @@ export function NGODashboard() {
     loadNgoDashboard();
   }, [wishlist.length]);
 
-  const handleAddWishlist = (e) => {
+  const handleAddWishlist = async (e) => {
     e.preventDefault();
     if (!newWishItem.trim()) return;
     const newItem = {
@@ -122,15 +125,36 @@ export function NGODashboard() {
       requestedQty: newWishQty || '100 units',
       urgency: newWishUrgency
     };
-    setWishlist(prev => [newItem, ...prev]);
+    const updated = [newItem, ...wishlist];
+    setWishlist(updated);
     setNewWishItem('');
     setNewWishQty('');
     setNewWishUrgency('Medium');
+    
+    try {
+      await api.updateWishlist(updated);
+      // Sync local profile
+      const storedProfile = JSON.parse(localStorage.getItem('findmeds_profile')) || {};
+      storedProfile.wishlist = updated;
+      localStorage.setItem('findmeds_profile', JSON.stringify(storedProfile));
+    } catch (err) {
+      console.warn("Failed syncing new wishlist item to backend database:", err);
+    }
+    
     alert(`Wishlist item added! Real-time GeoFirestore match triggers will notify if a matching donor posts within your district.`);
   };
 
-  const handleDeleteWishlist = (id) => {
-    setWishlist(prev => prev.filter(w => w.id !== id));
+  const handleDeleteWishlist = async (id) => {
+    const updated = wishlist.filter(w => w.id !== id);
+    setWishlist(updated);
+    try {
+      await api.updateWishlist(updated);
+      const storedProfile = JSON.parse(localStorage.getItem('findmeds_profile')) || {};
+      storedProfile.wishlist = updated;
+      localStorage.setItem('findmeds_profile', JSON.stringify(storedProfile));
+    } catch (err) {
+      console.warn("Failed syncing wishlist deletion to backend database:", err);
+    }
   };
 
   const filteredInventory = inventory.filter(item => 

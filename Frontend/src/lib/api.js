@@ -67,7 +67,16 @@ if (!localStorage.getItem('fm_users_db')) {
 async function requestWithFallback(method, url, data = null, needsAuth = true, storageKey = null, defaultStatic = []) {
   const finalUrl = `${getApiBaseUrl()}${url}`;
   try {
-    const config = needsAuth ? getAuthHeaders() : { headers: { 'Content-Type': 'application/json' } };
+    let config = needsAuth ? getAuthHeaders() : { headers: { 'Content-Type': 'application/json' } };
+    if (data && data instanceof FormData) {
+      config = {
+        ...config,
+        headers: {
+          ...config.headers,
+          'Content-Type': 'multipart/form-data'
+        }
+      };
+    }
     let response;
     
     if (method === 'GET') {
@@ -91,12 +100,28 @@ async function requestWithFallback(method, url, data = null, needsAuth = true, s
     if (storageKey) {
       const offlineData = JSON.parse(localStorage.getItem(storageKey)) || defaultStatic;
       
-      if (method === 'POST' && data && !data.id) {
+      let plainData = data;
+      if (data && data instanceof FormData) {
+        plainData = {};
+        for (const [key, value] of data.entries()) {
+          if (key === 'coordinates' || key === 'location') {
+            try {
+              plainData[key] = JSON.parse(value);
+            } catch (e) {
+              plainData[key] = value;
+            }
+          } else {
+            plainData[key] = value;
+          }
+        }
+      }
+
+      if (method === 'POST' && plainData && !plainData.id) {
         const itemWithId = { 
           id: `DON-${Math.floor(10000 + Math.random() * 90000)}`, 
           date: new Date().toISOString().split('T')[0],
           status: 'Donated',
-          ...data 
+          ...plainData 
         };
         offlineData.unshift(itemWithId);
         localStorage.setItem(storageKey, JSON.stringify(offlineData));
@@ -343,7 +368,8 @@ export const api = {
   },
 
   async getPendingNgos() {
-    return requestWithFallback('GET', '/ngo/pending', null, true, 'fm_ngos');
+    const res = await requestWithFallback('GET', '/ngo/pending', null, true, 'fm_ngos');
+    return res.data || res;
   },
 
   async verifyNgo(ngoId, approve) {

@@ -123,6 +123,7 @@ export function Donate() {
 
   const processFile = (file, setFieldValue) => {
     if (!file || !file.type.startsWith('image/')) return;
+    setFieldValue('rawFile', file); // Store raw smartphone photo asset stream
     const reader = new FileReader();
     reader.onload = () => {
       setFieldValue('image', reader.result);
@@ -175,29 +176,55 @@ export function Donate() {
   const handleSubmit = async (values, { setSubmitting }) => {
     console.log('Donation Details Combined:', values);
     try {
-      const payload = {
-        medicine: values.name,
-        category: values.category,
-        manufacturer: values.manufacturer,
-        batch: values.batchNumber,
-        batchNumber: values.batchNumber, // dual mapping for backend controller compatibility
-        qty: `${values.quantity} ${values.quantityUnit}`,
-        quantity: Number(values.quantity),
-        quantityUnit: values.quantityUnit,
-        expiry: values.expiryDate,
-        expiryDate: values.expiryDate,
-        storageCondition: values.storageCondition,
-        originalSeal: values.originalSeal,
-        noWaterDamage: values.noWaterDamage,
-        sterilePackaging: values.sterilePackaging,
-        description: values.description,
-        barcode: values.barcode || '',
-        image: values.image || '', // include uploaded base64 image representation
-        pincode: localStorage.getItem('findmeds_pincode') || '600001',
-        status: 'Active'
-      };
+      // 1. Capture dynamic GPS Geolocation coordinates strictly formatted as [longitude, latitude] numerical array
+      let coords = [80.2707, 13.0827]; // default Chelsea / South Chennai center [longitude, latitude] 
+      try {
+        if (navigator.geolocation) {
+          const pos = await new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { timeout: 3000 });
+          });
+          if (pos && pos.coords) {
+            coords = [pos.coords.longitude, pos.coords.latitude];
+          }
+        }
+      } catch (geowarn) {
+        console.warn("Could not capture automatic GPS geolocation: ", geowarn);
+      }
+
+      // 2. Build FormData stream payload to pass smoothly through backend buffers to Cloudinary
+      const formData = new FormData();
+      formData.append('medicine', values.name);
+      formData.append('category', values.category);
+      formData.append('manufacturer', values.manufacturer);
+      formData.append('batch', values.batchNumber);
+      formData.append('batchNumber', values.batchNumber);
+      formData.append('qty', `${values.quantity} ${values.quantityUnit}`);
+      formData.append('quantity', String(values.quantity));
+      formData.append('quantityUnit', values.quantityUnit);
+      formData.append('expiry', values.expiryDate);
+      formData.append('expiryDate', values.expiryDate);
+      formData.append('storageCondition', values.storageCondition);
+      formData.append('originalSeal', String(values.originalSeal));
+      formData.append('noWaterDamage', String(values.noWaterDamage));
+      formData.append('sterilePackaging', String(values.sterilePackaging));
+      formData.append('description', values.description || '');
+      formData.append('barcode', values.barcode || '');
+      formData.append('pincode', localStorage.getItem('findmeds_pincode') || '600001');
+      formData.append('status', 'Active');
       
-      await api.listDonation(payload);
+      // Strict geospatial structures matching MongoDB 2dsphere indexing rules
+      formData.append('coordinates', JSON.stringify(coords));
+      formData.append('location', JSON.stringify({ type: 'Point', coordinates: coords }));
+
+      if (values.rawFile) {
+        // Stream smartphones/camera raw photo asset file 
+        formData.append('image', values.rawFile);
+      } else if (values.image) {
+        // Fallback to base64 if needed
+        formData.append('image', values.image);
+      }
+      
+      await api.listDonation(formData);
       navigate('/donor-dashboard');
     } catch (err) {
       console.error('Error submitting listing:', err);
@@ -518,7 +545,7 @@ export function Donate() {
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                             <Trash2 
                               className="w-5 h-5 text-white cursor-pointer" 
-                              onClick={() => setFieldValue('image', '')}
+                              onClick={() => { setFieldValue('image', ''); setFieldValue('rawFile', null); }}
                             />
                           </div>
                         </div>
