@@ -97,60 +97,6 @@ export function AdminPortal() {
       setLoading(true);
       setError(null);
 
-      // Seed Offline Local DB fallbacks if empty so our GET APIs retrieve seeded fallbacks when server is offline
-      if (!localStorage.getItem('fm_users_db')) {
-        const initialUsers = [
-          { email: 'donor@example.com', password: 'password', fullName: 'Metropolis Hospital Group', role: 'donor', pincode: '400001', status: 'Active' },
-          { email: 'ngo@lifecare.org', password: 'password', fullName: 'LifeCare NGO', role: 'ngo', pincode: '600001', status: 'Active' },
-          { email: 'admin@findmeds.org', password: 'password', fullName: 'Global Admin Hub', role: 'admin', pincode: '400001', status: 'Active' },
-          { email: 'volunteer.hope@clinic.org', password: 'password', fullName: 'Hope Clinic Volunteer', role: 'ngo', pincode: '600001', status: 'Active' },
-          { email: 'surplus.hub@city.org', password: 'password', fullName: 'City Healthcare Donor Point', role: 'donor', pincode: '400005', status: 'Suspended' },
-          { email: 'patient.care@outlook.com', password: 'password', fullName: 'Karan Mehra (Recipient Patient)', role: 'recipient', pincode: '400015', status: 'Active' }
-        ];
-        localStorage.setItem('fm_users_db', JSON.stringify(initialUsers));
-      }
-
-      if (!localStorage.getItem('fm_ngos')) {
-        const initialNgos = [
-          { id: 'ngo1', name: 'LifeCare NGO', location: 'South District, Mumbai', email: 'lifecare@ngo.org', status: 'verified', wishlist: ['Insulin', 'Metformin'] },
-          { id: 'ngo2', name: 'Hope Clinic', location: 'Bandstand, Mumbai', email: 'hope@clinic.org', status: 'verified', wishlist: ['Amoxicillin', 'Azithromycin'] },
-          { id: 'ngo3', name: 'Rural Health Fund', location: 'Palghar Rural', email: 'rural@health.org', status: 'pending', wishlist: ['Paracetamol'] },
-        ];
-        localStorage.setItem('fm_ngos', JSON.stringify(initialNgos));
-      }
-
-      if (!localStorage.getItem('fm_audit_logs')) {
-        const initialAudits = [
-          { id: 'aud-1', time: '2026-05-24 10:30:15', actor: 'admin@findmeds.org', action: 'Approved NGO Registration', details: 'Hope Clinic verified successfully with Darpan registration #MH-28931.', category: 'NGO_VERIFICATION' },
-          { id: 'aud-2', time: '2026-05-24 14:15:22', actor: 'admin@findmeds.org', action: 'Update Schedule H Policy', details: 'Added Standard Opioids to global Schedule H blocked classes.', category: 'COMPLIANCE' },
-          { id: 'aud-3', time: '2026-05-25 01:45:00', actor: 'System Auto-Job', action: 'Auto-cascade surplus distribution', details: 'Checked 4 listing blocks. Triggered global pooling matching algorithm.', category: 'SYSTEM' },
-          { id: 'aud-4', time: '2026-05-25 03:10:05', actor: 'admin@findmeds.org', action: 'Role Escalation', details: 'Promoted volunteer.hope@clinic.org to NGO verified lead coordinator.', category: 'USER_ADMIN' }
-        ];
-        localStorage.setItem('fm_audit_logs', JSON.stringify(initialAudits));
-      }
-
-      if (!localStorage.getItem('fm_requests')) {
-        const initialRequests = [
-          { id: 'REQ-1002', date: '2026-05-24', medicine: 'Amoxicillin 500mg', qty: '200 Units', urgency: 'High', ngo: 'Helping Hands NGO', pincode: '600001', status: 'Pending Verification', recipient: 'Helping Hands NGO Community Outreach' },
-          { id: 'REQ-1003', date: '2026-05-23', medicine: 'Insulin Glargine', qty: '30 Boxes', urgency: 'Critical', ngo: 'LifeCare NGO', pincode: '400001', status: 'Verified', recipient: 'Regional Diabetic Care Ward B' },
-          { id: 'REQ-1004', date: '2026-05-22', medicine: 'Metformin 850mg', qty: '150 Tablets', urgency: 'Medium', ngo: 'Hope Clinic', pincode: '600005', status: 'Pending Verification', recipient: 'Urban Slum Health Camp' },
-          { id: 'REQ-1005', date: '2026-05-21', medicine: 'Albuterol Inhaler', qty: '25 Units', urgency: 'Low', ngo: 'Rural Health Fund', pincode: '700012', status: 'Rejected', recipient: 'Primary School Asthma Drive' }
-        ];
-        localStorage.setItem('fm_requests', JSON.stringify(initialRequests));
-      }
-
-      if (!localStorage.getItem('fm_donations')) {
-        const initialDonations = [
-          { id: 'DON-98421', date: '2026-05-12', medicine: 'Insulin Glargine', qty: '12 Boxes', quantityUnit: 'Boxes', ngo: 'LifeCare NGO', status: 'Claimed', batch: 'BT-3392', category: 'Diabetes', expiry: '2027-12', storageCondition: 'refrigerated', pincode: '600001', donor: 'Metropolis Hospital Group' },
-          { id: 'DON-98405', date: '2026-04-28', medicine: 'Amoxicillin 500mg', qty: '20 Packs', quantityUnit: 'Packs', ngo: 'Hope Clinic', status: 'Active', batch: 'AM-9042', category: 'Antibiotics', expiry: '2026-04', storageCondition: 'room', pincode: '600001', donor: 'Metropolis Hospital Group' },
-          { id: 'DON-98399', date: '2026-04-15', medicine: 'Paracetamol', qty: '100 Units', quantityUnit: 'Units', ngo: 'Rural Health', status: 'Active', batch: 'PA-2201', category: 'Pain Relief', expiry: '2026-10', storageCondition: 'ambient', pincode: '700001', donor: 'City Care Dispensary' },
-          { id: 'DON-98380', date: '2026-03-30', medicine: 'Vitamin C', qty: '15 Boxes', quantityUnit: 'Boxes', ngo: 'St. Jude Center', status: 'Rejected', batch: 'VC-1182', category: 'supplies', expiry: '2024-03', storageCondition: 'room', pincode: '600002', donor: 'Metro Pharma' },
-          { id: 'DON-98433', date: '2026-05-24', medicine: 'Vildagliptin 50mg', qty: '40 Packs', quantityUnit: 'Packs', ngo: 'Pending', status: 'Pending Approval', batch: 'VD-1092', category: 'Diabetes', expiry: '2027-02', storageCondition: 'room', pincode: '400015', donor: 'Metropolis Hospital Group' },
-          { id: 'DON-98434', date: '2026-05-25', medicine: 'Lisinopril 10mg', qty: '200 Tablets', quantityUnit: 'Tablets', ngo: 'Pending', status: 'Pending Approval', batch: 'LS-3310', category: 'Hypertension', expiry: '2027-06', storageCondition: 'ambient', pincode: '600001', donor: 'Dr. Carter Health Point' }
-        ];
-        localStorage.setItem('fm_donations', JSON.stringify(initialDonations));
-      }
-
       // Fetch dynamic state from API using live Axios integrations
       const [fetchedUsers, fetchedNgos, fetchedAudits, fetchedRequests, fetchedDonations, fetchedExclusions] = await Promise.all([
         api.getUsers(),
@@ -165,18 +111,7 @@ export function AdminPortal() {
       setPendingNgos(Array.isArray(fetchedNgos) ? fetchedNgos : (fetchedNgos?.data || []));
       setAudits(Array.isArray(fetchedAudits) ? fetchedAudits : (fetchedAudits?.data || []));
       setRequests(Array.isArray(fetchedRequests) ? fetchedRequests : (fetchedRequests?.data || []));
-
-      // Ensure that some have pending status to make it immediately testable
-      const donationsArray = Array.isArray(fetchedDonations) ? fetchedDonations : (fetchedDonations?.data || []);
-      let donationsWithPendings = [...donationsArray];
-      if (!donationsWithPendings.some(d => d.status === 'Pending Approval')) {
-        donationsWithPendings.push(
-          { id: 'DON-98433', date: '2026-05-24', medicine: 'Vildagliptin 50mg', qty: '40 Packs', quantityUnit: 'Packs', ngo: 'Pending', status: 'Pending Approval', batch: 'VD-1092', category: 'Diabetes', expiry: '2027-02', storageCondition: 'room', pincode: '400015', donor: 'Metropolis Hospital Group' },
-          { id: 'DON-98434', date: '2026-05-25', medicine: 'Lisinopril 10mg', qty: '200 Tablets', quantityUnit: 'Tablets', ngo: 'Pending', status: 'Pending Approval', batch: 'LS-3310', category: 'Hypertension', expiry: '2027-06', storageCondition: 'ambient', pincode: '600001', donor: 'Dr. Carter Health Point' }
-        );
-        localStorage.setItem('fm_donations', JSON.stringify(donationsWithPendings));
-      }
-      setDonations(donationsWithPendings);
+      setDonations(Array.isArray(fetchedDonations) ? fetchedDonations : (fetchedDonations?.data || []));
       setBlockedMeds(Array.isArray(fetchedExclusions) ? fetchedExclusions : (fetchedExclusions?.data || []));
 
     } catch (err) {

@@ -4,7 +4,20 @@ import axios from 'axios';
 export const DEFAULT_API_BASE = 'http://localhost:5001/api';
 
 export function getApiBaseUrl() {
-  return localStorage.getItem('findmeds_api_url') || DEFAULT_API_BASE;
+  let url = localStorage.getItem('findmeds_api_url') || DEFAULT_API_BASE;
+  
+  // If we are on AI Studio preview URL (and not on local machine), we route through Vite port 3000 proxy
+  if (typeof window !== 'undefined' && 
+      window.location.hostname !== 'localhost' && 
+      window.location.hostname !== '127.0.0.1' && 
+      !localStorage.getItem('findmeds_api_url')) {
+    url = window.location.origin + '/api';
+  }
+
+  if (url.endsWith('/')) {
+    url = url.slice(0, -1);
+  }
+  return url;
 }
 
 export function setApiBaseUrl(url) {
@@ -37,31 +50,61 @@ function logApiCall(method, endpoint, success, dataOrError) {
   console.log(`[API ${method}] ${endpoint} | Success: ${success}`, dataOrError);
 }
 
-// --- INITIALIZE STORAGE DEMO DATA ---
-if (!localStorage.getItem('fm_initialized_db')) {
-  localStorage.setItem('fm_donations', JSON.stringify([
-    { id: 'DON-98421', date: '2026-05-12', medicine: 'Insulin Glargine', qty: '12 Boxes', quantityUnit: 'Boxes', ngo: 'LifeCare NGO', status: 'Claimed', batch: 'BT-3392', category: 'Diabetes', expiry: '2025-12', storageCondition: 'refrigerated', pincode: '600001' },
-    { id: 'DON-98405', date: '2026-04-28', medicine: 'Amoxicillin 500mg', qty: '20 Packs', quantityUnit: 'Packs', ngo: 'Hope Clinic', status: 'Donated', batch: 'AM-9042', category: 'Antibiotics', expiry: '2026-04', storageCondition: 'room', pincode: '600001' },
-    { id: 'DON-98399', date: '2026-04-15', medicine: 'Paracetamol', qty: '100 Units', quantityUnit: 'Units', ngo: 'Rural Health', status: 'Donated', batch: 'PA-2201', category: 'analgesics', expiry: '2026-10', storageCondition: 'ambient', pincode: '700001' },
-    { id: 'DON-98380', date: '2026-03-30', medicine: 'Vitamin C', qty: '15 Boxes', quantityUnit: 'Boxes', ngo: 'St. Jude Center', status: 'Rejected', batch: 'VC-1182', category: 'supplies', expiry: '2024-03', storageCondition: 'room', pincode: '600002' },
-  ]));
+// Clear any previously initialized dummy mock databases to force clean dynamic requests from backend API
+(() => {
+  if (typeof window !== 'undefined') {
+    const dummyIndicators = ['DON-98421', 'DON-98405', 'DON-98399', 'DON-98380'];
+    const storedDonations = localStorage.getItem('fm_donations');
+    if (storedDonations) {
+      try {
+        const list = JSON.parse(storedDonations);
+        if (Array.isArray(list) && list.some(item => dummyIndicators.includes(item.id))) {
+          localStorage.removeItem('fm_donations');
+        }
+      } catch (e) {
+        localStorage.removeItem('fm_donations');
+      }
+    }
+    
+    const storedNgos = localStorage.getItem('fm_ngos');
+    if (storedNgos) {
+      try {
+        const list = JSON.parse(storedNgos);
+        if (Array.isArray(list) && list.some(item => ['ngo1', 'ngo2', 'ngo3'].includes(item.id))) {
+          localStorage.removeItem('fm_ngos');
+        }
+      } catch (e) {
+        localStorage.removeItem('fm_ngos');
+      }
+    }
 
-  localStorage.setItem('fm_ngos', JSON.stringify([
-    { id: 'ngo1', name: 'LifeCare NGO', location: 'South District, Mumbai', email: 'lifecare@ngo.org', status: 'verified', wishlist: ['Insulin', 'Metformin'] },
-    { id: 'ngo2', name: 'Hope Clinic', location: 'Bandstand, Mumbai', email: 'hope@clinic.org', status: 'verified', wishlist: ['Amoxicillin', 'Azithromycin'] },
-    { id: 'ngo3', name: 'Rural Health Fund', location: 'Palghar Rural', email: 'rural@health.org', status: 'pending', wishlist: ['Paracetamol'] },
-  ]));
+    const storedRequests = localStorage.getItem('fm_requests');
+    if (storedRequests) {
+      try {
+        const list = JSON.parse(storedRequests);
+        if (Array.isArray(list) && list.some(item => ['REQ-1002', 'REQ-1003', 'REQ-1005'].includes(item.id))) {
+          localStorage.removeItem('fm_requests');
+        }
+      } catch (e) {
+        localStorage.removeItem('fm_requests');
+      }
+    }
 
-  localStorage.setItem('fm_initialized_db', 'true');
-}
+    const storedAudits = localStorage.getItem('fm_audit_logs');
+    if (storedAudits) {
+      try {
+        const list = JSON.parse(storedAudits);
+        if (Array.isArray(list) && list.some(item => ['aud-1', 'aud-2', 'aud-3'].includes(item.id))) {
+          localStorage.removeItem('fm_audit_logs');
+        }
+      } catch (e) {
+        localStorage.removeItem('fm_audit_logs');
+      }
+    }
 
-if (!localStorage.getItem('fm_users_db')) {
-  localStorage.setItem('fm_users_db', JSON.stringify([
-    { email: 'donor@example.com', password: 'password', fullName: 'Metropolis Hospital Group', role: 'donor', pincode: '400001' },
-    { email: 'ngo@lifecare.org', password: 'password', fullName: 'LifeCare NGO', role: 'ngo', pincode: '600001' },
-    { email: 'admin@findmeds.org', password: 'password', fullName: 'Global Admin Hub', role: 'admin', pincode: '400001' }
-  ]));
-}
+    localStorage.removeItem('fm_initialized_db');
+  }
+})();
 
 // Safe wrapper to call live API with fallback to offline local storage
 async function requestWithFallback(method, url, data = null, needsAuth = true, storageKey = null, defaultStatic = []) {

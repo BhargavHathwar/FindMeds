@@ -639,8 +639,6 @@ export function Auth() {
         )}
 
         <div className="mt-8 pt-8 border-t border-slate-200 flex justify-center items-center gap-8 opacity-40">
-          <img src="https://upload.wikimedia.org/wikipedia/commons/5/5a/WHO_logo.svg" alt="WHO" className="h-8 grayscale" />
-          <img src="https://upload.wikimedia.org/wikipedia/commons/c/c2/UNICEF_logo.svg" alt="UNICEF" className="h-6 grayscale" />
           <img src="https://upload.wikimedia.org/wikipedia/commons/b/ba/Red_Cross_icon.svg" alt="Red Cross" className="h-6 grayscale" />
         </div>
       </div>
